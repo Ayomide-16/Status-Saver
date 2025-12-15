@@ -9,21 +9,23 @@ class LoadingShimmer extends StatelessWidget {
 
   const LoadingShimmer({
     super.key,
-    this.width = double.infinity,
-    this.height = 200,
-    this.borderRadius = 16,
+    required this.width,
+    required this.height,
+    this.borderRadius = 12,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Shimmer.fromColors(
-      baseColor: AppColors.surfaceLight,
-      highlightColor: AppColors.surfaceDark,
+      baseColor: isDark ? AppColors.darkCard : AppColors.lightDivider,
+      highlightColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
+          color: isDark ? AppColors.darkCard : AppColors.lightDivider,
           borderRadius: BorderRadius.circular(borderRadius),
         ),
       ),
@@ -32,73 +34,27 @@ class LoadingShimmer extends StatelessWidget {
 }
 
 class LoadingShimmerGrid extends StatelessWidget {
-  final int itemCount;
-
-  const LoadingShimmerGrid({
-    super.key,
-    this.itemCount = 6,
-  });
+  const LoadingShimmerGrid({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.85,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.8,
         ),
-        itemCount: itemCount,
+        itemCount: 6,
         itemBuilder: (context, index) {
-          return Shimmer.fromColors(
-            baseColor: AppColors.surfaceLight,
-            highlightColor: AppColors.surfaceDark,
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
+          return const LoadingShimmer(
+            width: double.infinity,
+            height: double.infinity,
           );
         },
       ),
-    );
-  }
-}
-
-class LoadingShimmerList extends StatelessWidget {
-  final int itemCount;
-  final double itemHeight;
-
-  const LoadingShimmerList({
-    super.key,
-    this.itemCount = 5,
-    this.itemHeight = 80,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: itemCount,
-      itemBuilder: (context, index) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Shimmer.fromColors(
-            baseColor: AppColors.surfaceLight,
-            highlightColor: AppColors.surfaceDark,
-            child: Container(
-              height: itemHeight,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }

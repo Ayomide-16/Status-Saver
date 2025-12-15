@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/status_provider.dart';
-import '../services/cache_service.dart';
 import '../widgets/status_grid.dart';
-import '../widgets/custom_widgets.dart';
 import 'status_viewer.dart';
 
 class CacheScreen extends StatefulWidget {
@@ -17,26 +15,11 @@ class CacheScreen extends StatefulWidget {
 class _CacheScreenState extends State<CacheScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final CacheService _cacheService = CacheService();
-  int _cacheSize = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadCacheInfo();
-    });
-  }
-
-  Future<void> _loadCacheInfo() async {
-    final size = await _cacheService.getCacheSize();
-    if (mounted) {
-      setState(() {
-        _cacheSize = size;
-      });
-    }
   }
 
   @override
@@ -47,7 +30,6 @@ class _CacheScreenState extends State<CacheScreen>
 
   Future<void> _handleRefresh() async {
     await context.read<StatusProvider>().refreshCachedStatuses();
-    await _loadCacheInfo();
   }
 
   void _openStatus(status) {
@@ -62,9 +44,7 @@ class _CacheScreenState extends State<CacheScreen>
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                    success ? 'Status saved successfully!' : 'Failed to save status',
-                  ),
+                  content: Text(success ? 'Status saved!' : 'Failed to save'),
                   backgroundColor: success ? AppColors.success : AppColors.error,
                 ),
               );
@@ -81,9 +61,7 @@ class _CacheScreenState extends State<CacheScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            success ? 'Status saved successfully!' : 'Failed to save status',
-          ),
+          content: Text(success ? 'Status saved!' : 'Failed to save'),
           backgroundColor: success ? AppColors.success : AppColors.error,
         ),
       );
@@ -94,243 +72,144 @@ class _CacheScreenState extends State<CacheScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.warning),
-            const SizedBox(width: 12),
-            Text(
-              'Clear Cache?',
-              style: TextStyle(color: AppColors.textPrimary),
-            ),
-          ],
-        ),
-        content: Text(
-          'This will delete all cached statuses. This action cannot be undone.',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
+        title: const Text('Clear Cache?'),
+        content: const Text('This will delete all cached statuses. Saved statuses will not be affected.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Clear', style: TextStyle(color: AppColors.error)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Clear'),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
-      await context.read<StatusProvider>().clearAllCache();
-      await _loadCacheInfo();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Cache cleared successfully'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
+    if (confirmed == true && mounted) {
+      await context.read<StatusProvider>().clearCache();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cache cleared'),
+          backgroundColor: AppColors.success,
+        ),
+      );
     }
-  }
-
-  String? _getCacheTimeLeft(status) {
-    final metadata = _cacheService.getCacheMetadata(status.originalPath ?? status.path);
-    return metadata?.formattedRemainingTime;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
-        child: SafeArea(
-          child: Consumer<StatusProvider>(
-            builder: (context, provider, _) {
-              return Column(
-                children: [
-                  // App Bar
-                  _buildAppBar(provider),
-
-                  // Cache Info Card
-                  _buildCacheInfoCard(provider),
-
-                  // Tab Bar
-                  CustomTabBar(
-                    tabController: _tabController,
-                    tabs: const ['Images', 'Videos'],
-                    icons: const [Icons.image_rounded, Icons.videocam_rounded],
-                    counts: [
-                      provider.cachedImages.length,
-                      provider.cachedVideos.length,
-                    ],
-                  ),
-
-                  // Tab Content
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // Images Tab
-                        RefreshIndicator(
-                          onRefresh: _handleRefresh,
-                          color: AppColors.accent,
-                          backgroundColor: AppColors.surfaceDark,
-                          child: StatusGrid(
-                            statuses: provider.cachedImages,
-                            isLoading: false,
-                            onTap: _openStatus,
-                            onSave: _saveStatus,
-                            getCacheTimeLeft: _getCacheTimeLeft,
-                            emptyMessage: 'No cached images',
-                            emptyIcon: Icons.cached_outlined,
-                          ),
-                        ),
-
-                        // Videos Tab
-                        RefreshIndicator(
-                          onRefresh: _handleRefresh,
-                          color: AppColors.accent,
-                          backgroundColor: AppColors.surfaceDark,
-                          child: StatusGrid(
-                            statuses: provider.cachedVideos,
-                            isLoading: false,
-                            onTap: _openStatus,
-                            onSave: _saveStatus,
-                            getCacheTimeLeft: _getCacheTimeLeft,
-                            emptyMessage: 'No cached videos',
-                            emptyIcon: Icons.cached_outlined,
-                          ),
-                        ),
-                      ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Consumer<StatusProvider>(
+      builder: (context, provider, _) {
+        return Scaffold(
+          body: Column(
+            children: [
+              // Cache Info Bar
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: isDark 
+                          ? AppColors.darkTextSecondary 
+                          : AppColors.lightTextSecondary,
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppBar(StatusProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          // Title
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ShaderMask(
-                  shaderCallback: (bounds) => LinearGradient(
-                    colors: [AppColors.warning, Colors.orange],
-                  ).createShader(bounds),
-                  child: const Text(
-                    'Cache',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Cached statuses expire after 7 days',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark 
+                              ? AppColors.darkTextSecondary 
+                              : AppColors.lightTextSecondary,
+                        ),
+                      ),
                     ),
-                  ),
+                    TextButton(
+                      onPressed: provider.cachedStatuses.isNotEmpty ? _clearCache : null,
+                      child: const Text('Clear'),
+                    ),
+                  ],
                 ),
-                Text(
-                  '${provider.cachedStatuses.length} statuses cached',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Clear Cache Button
-          if (provider.cachedStatuses.isNotEmpty)
-            IconButton(
-              onPressed: _clearCache,
-              icon: Icon(
-                Icons.delete_sweep_rounded,
-                color: AppColors.error,
               ),
-              tooltip: 'Clear Cache',
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCacheInfoCard(StatusProvider provider) {
-    if (provider.cachedStatuses.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.warning.withValues(alpha: 0.2),
-            AppColors.warning.withValues(alpha: 0.1),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.warning.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.storage_rounded,
-              color: AppColors.warning,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Cache Storage',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
+              
+              // Tab Bar
+              Container(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: TabBar(
+                  controller: _tabController,
+                  tabs: [
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.image_rounded, size: 20),
+                          const SizedBox(width: 8),
+                          Text('Images (${provider.cachedImages.length})'),
+                        ],
+                      ),
+                    ),
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.videocam_rounded, size: 20),
+                          const SizedBox(width: 8),
+                          Text('Videos (${provider.cachedVideos.length})'),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_cacheService.formatSize(_cacheSize)} used • Auto-deletes after 7 days',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
+              ),
+
+              // Tab Content
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    // Images Tab
+                    RefreshIndicator(
+                      onRefresh: _handleRefresh,
+                      color: AppColors.primaryGreen,
+                      child: StatusGrid(
+                        statuses: provider.cachedImages,
+                        isLoading: provider.isLoading,
+                        onTap: _openStatus,
+                        onSave: _saveStatus,
+                        emptyMessage: 'No cached images',
+                        emptyIcon: Icons.history_rounded,
+                      ),
+                    ),
+
+                    // Videos Tab
+                    RefreshIndicator(
+                      onRefresh: _handleRefresh,
+                      color: AppColors.primaryGreen,
+                      child: StatusGrid(
+                        statuses: provider.cachedVideos,
+                        isLoading: provider.isLoading,
+                        onTap: _openStatus,
+                        onSave: _saveStatus,
+                        emptyMessage: 'No cached videos',
+                        emptyIcon: Icons.history_rounded,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Icon(
-            Icons.info_outline_rounded,
-            color: AppColors.warning.withValues(alpha: 0.7),
-            size: 20,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

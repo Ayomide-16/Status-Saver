@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/status_provider.dart';
 import '../widgets/status_grid.dart';
-import '../widgets/custom_widgets.dart';
 import 'status_viewer.dart';
 
 class SavedScreen extends StatefulWidget {
@@ -21,11 +20,6 @@ class _SavedScreenState extends State<SavedScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
-    // Refresh saved statuses
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<StatusProvider>().refreshSavedStatuses();
-    });
   }
 
   @override
@@ -44,185 +38,158 @@ class _SavedScreenState extends State<SavedScreen>
       MaterialPageRoute(
         builder: (_) => StatusViewer(
           status: status,
-          showSaveButton: false,
+          showSave: false,
+          showShare: true,
+          showDelete: true,
           onShare: () => context.read<StatusProvider>().shareStatus(status),
+          onDelete: () async {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Status?'),
+                content: const Text('This will permanently delete this status.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed == true && mounted) {
+              await context.read<StatusProvider>().deleteSavedStatus(status);
+              Navigator.pop(context);
+            }
+          },
         ),
       ),
     );
+  }
+
+  Future<void> _shareStatus(status) async {
+    await context.read<StatusProvider>().shareStatus(status);
   }
 
   Future<void> _deleteStatus(status) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Delete Status?',
-          style: TextStyle(color: AppColors.textPrimary),
-        ),
-        content: Text(
-          'This action cannot be undone.',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
+        title: const Text('Delete Status?'),
+        content: const Text('This will permanently delete this status.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Delete', style: TextStyle(color: AppColors.error)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
-
-    if (confirmed == true) {
-      final provider = context.read<StatusProvider>();
-      final success = await provider.deleteStatus(status);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success ? 'Status deleted' : 'Failed to delete status',
-            ),
-            backgroundColor: success ? AppColors.success : AppColors.error,
-          ),
-        );
-      }
+    
+    if (confirmed == true && mounted) {
+      await context.read<StatusProvider>().deleteSavedStatus(status);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Status deleted'),
+          backgroundColor: AppColors.success,
+        ),
+      );
     }
-  }
-
-  void _shareStatus(status) {
-    context.read<StatusProvider>().shareStatus(status);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
-        child: SafeArea(
-          child: Consumer<StatusProvider>(
-            builder: (context, provider, _) {
-              return Column(
-                children: [
-                  // App Bar
-                  _buildAppBar(provider),
-
-                  // Tab Bar
-                  CustomTabBar(
-                    tabController: _tabController,
-                    tabs: const ['Images', 'Videos'],
-                    icons: const [Icons.image_rounded, Icons.videocam_rounded],
-                    counts: [
-                      provider.savedImages.length,
-                      provider.savedVideos.length,
-                    ],
-                  ),
-
-                  // Tab Content
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // Images Tab
-                        RefreshIndicator(
-                          onRefresh: _handleRefresh,
-                          color: AppColors.accent,
-                          backgroundColor: AppColors.surfaceDark,
-                          child: StatusGrid(
-                            statuses: provider.savedImages,
-                            isLoading: false,
-                            onTap: _openStatus,
-                            onDelete: _deleteStatus,
-                            onShare: _shareStatus,
-                            showSaveButton: false,
-                            showDeleteButton: true,
-                            emptyMessage: 'No saved images yet',
-                            emptyIcon: Icons.bookmark_border_rounded,
-                          ),
-                        ),
-
-                        // Videos Tab
-                        RefreshIndicator(
-                          onRefresh: _handleRefresh,
-                          color: AppColors.accent,
-                          backgroundColor: AppColors.surfaceDark,
-                          child: StatusGrid(
-                            statuses: provider.savedVideos,
-                            isLoading: false,
-                            onTap: _openStatus,
-                            onDelete: _deleteStatus,
-                            onShare: _shareStatus,
-                            showSaveButton: false,
-                            showDeleteButton: true,
-                            emptyMessage: 'No saved videos yet',
-                            emptyIcon: Icons.videocam_off_outlined,
-                          ),
-                        ),
-                      ],
+    return Consumer<StatusProvider>(
+      builder: (context, provider, _) {
+        return Scaffold(
+          body: Column(
+            children: [
+              // Tab Bar
+              Container(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: TabBar(
+                  controller: _tabController,
+                  tabs: [
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.image_rounded, size: 20),
+                          const SizedBox(width: 8),
+                          Text('Images (${provider.savedImages.length})'),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppBar(StatusProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          // Title
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ShaderMask(
-                  shaderCallback: (bounds) =>
-                      AppColors.accentGradient.createShader(bounds),
-                  child: const Text(
-                    'Saved',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.videocam_rounded, size: 20),
+                          const SizedBox(width: 8),
+                          Text('Videos (${provider.savedVideos.length})'),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                Text(
-                  '${provider.savedStatuses.length} statuses saved',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
 
-          // Info Icon
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.bookmark_rounded,
-              color: AppColors.accent,
-            ),
+              // Tab Content
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    // Images Tab
+                    RefreshIndicator(
+                      onRefresh: _handleRefresh,
+                      color: AppColors.primaryGreen,
+                      child: StatusGrid(
+                        statuses: provider.savedImages,
+                        isLoading: provider.isLoading,
+                        onTap: _openStatus,
+                        onShare: _shareStatus,
+                        onDelete: _deleteStatus,
+                        showSave: false,
+                        showDelete: true,
+                        showShare: true,
+                        emptyMessage: 'No saved images',
+                        emptyIcon: Icons.bookmark_outline_rounded,
+                      ),
+                    ),
+
+                    // Videos Tab
+                    RefreshIndicator(
+                      onRefresh: _handleRefresh,
+                      color: AppColors.primaryGreen,
+                      child: StatusGrid(
+                        statuses: provider.savedVideos,
+                        isLoading: provider.isLoading,
+                        onTap: _openStatus,
+                        onShare: _shareStatus,
+                        onDelete: _deleteStatus,
+                        showSave: false,
+                        showDelete: true,
+                        showShare: true,
+                        emptyMessage: 'No saved videos',
+                        emptyIcon: Icons.bookmark_outline_rounded,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

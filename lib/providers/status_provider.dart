@@ -212,4 +212,9 @@ class StatusProvider extends ChangeNotifier {
   }
 
   String formatSize(int bytes) => _cacheService.formatSize(bytes);
+
+  // Alias methods
+  Future<void> clearCache() async => await clearAllCache();
+  
+  Future<bool> deleteSavedStatus(StatusItem status) async => await deleteStatus(status);
 }

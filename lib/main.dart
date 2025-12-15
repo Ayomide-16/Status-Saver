@@ -7,27 +7,12 @@ import 'config/theme.dart';
 import 'models/status_item.dart';
 import 'models/cache_metadata.dart';
 import 'providers/status_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/main_navigation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Set system UI overlay style
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: AppColors.surfaceDark,
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
-  
-  // Set preferred orientations
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
   
   // Initialize Hive
   await Hive.initFlutter();
@@ -44,16 +29,39 @@ class StatusSaverApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => StatusProvider()),
       ],
-      child: MaterialApp(
-        title: 'Status Saver',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        initialRoute: '/',
-        routes: {
-          '/': (context) => const SplashScreen(),
-          '/home': (context) => const MainNavigation(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          // Set system UI based on theme
+          SystemChrome.setSystemUIOverlayStyle(
+            SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: themeProvider.isDarkMode 
+                  ? Brightness.light 
+                  : Brightness.dark,
+              systemNavigationBarColor: themeProvider.isDarkMode
+                  ? AppColors.darkSurface
+                  : AppColors.lightBackground,
+              systemNavigationBarIconBrightness: themeProvider.isDarkMode
+                  ? Brightness.light
+                  : Brightness.dark,
+            ),
+          );
+          
+          return MaterialApp(
+            title: 'Status Saver',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            initialRoute: '/',
+            routes: {
+              '/': (context) => const SplashScreen(),
+              '/home': (context) => const MainNavigation(),
+            },
+          );
         },
       ),
     );

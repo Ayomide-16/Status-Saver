@@ -1,38 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import '../models/status_item.dart';
 import '../config/theme.dart';
+import '../models/status_item.dart';
 import 'status_card.dart';
 import 'loading_shimmer.dart';
 
 class StatusGrid extends StatelessWidget {
   final List<StatusItem> statuses;
   final bool isLoading;
-  final Function(StatusItem) onTap;
+  final Function(StatusItem)? onTap;
   final Function(StatusItem)? onSave;
   final Function(StatusItem)? onDelete;
   final Function(StatusItem)? onShare;
-  final bool showSaveButton;
-  final bool showDeleteButton;
-  final bool showCacheIndicator;
-  final String? Function(StatusItem)? getCacheTimeLeft;
+  final bool showSave;
+  final bool showDelete;
+  final bool showShare;
   final String emptyMessage;
   final IconData emptyIcon;
 
   const StatusGrid({
     super.key,
     required this.statuses,
-    required this.isLoading,
-    required this.onTap,
+    this.isLoading = false,
+    this.onTap,
     this.onSave,
     this.onDelete,
     this.onShare,
-    this.showSaveButton = true,
-    this.showDeleteButton = false,
-    this.showCacheIndicator = false,
-    this.getCacheTimeLeft,
-    this.emptyMessage = 'No status found',
-    this.emptyIcon = Icons.photo_library_outlined,
+    this.showSave = true,
+    this.showDelete = false,
+    this.showShare = false,
+    this.emptyMessage = 'No statuses found',
+    this.emptyIcon = Icons.inbox_rounded,
   });
 
   @override
@@ -42,56 +40,53 @@ class StatusGrid extends StatelessWidget {
     }
 
     if (statuses.isEmpty) {
-      return _buildEmptyState();
+      return _buildEmptyState(context);
     }
 
     return MasonryGridView.count(
       crossAxisCount: 2,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      padding: const EdgeInsets.all(16),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      padding: const EdgeInsets.all(12),
       itemCount: statuses.length,
       itemBuilder: (context, index) {
         final status = statuses[index];
         return StatusCard(
           status: status,
-          onTap: () => onTap(status),
+          onTap: onTap != null ? () => onTap!(status) : null,
           onSave: onSave != null ? () => onSave!(status) : null,
           onDelete: onDelete != null ? () => onDelete!(status) : null,
           onShare: onShare != null ? () => onShare!(status) : null,
-          showSaveButton: showSaveButton,
-          showDeleteButton: showDeleteButton,
-          showCacheIndicator: showCacheIndicator,
-          cacheTimeLeft: getCacheTimeLeft?.call(status),
+          showSave: showSave,
+          showDelete: showDelete,
+          showShare: showShare,
         );
       },
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceLight.withValues(alpha: 0.5),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              emptyIcon,
-              size: 64,
-              color: AppColors.textSecondary,
-            ),
+          Icon(
+            emptyIcon,
+            size: 80,
+            color: isDark 
+                ? AppColors.darkTextSecondary 
+                : AppColors.lightTextSecondary,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Text(
             emptyMessage,
             style: TextStyle(
-              color: AppColors.textSecondary,
               fontSize: 16,
-              fontWeight: FontWeight.w500,
+              color: isDark 
+                  ? AppColors.darkTextSecondary 
+                  : AppColors.lightTextSecondary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -99,8 +94,10 @@ class StatusGrid extends StatelessWidget {
           Text(
             'Pull down to refresh',
             style: TextStyle(
-              color: AppColors.textTertiary,
               fontSize: 12,
+              color: isDark 
+                  ? AppColors.darkTextSecondary 
+                  : AppColors.lightTextSecondary,
             ),
           ),
         ],
