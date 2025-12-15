@@ -97,11 +97,11 @@ class AppTheme {
         unselectedLabelColor: AppColors.textSecondary,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: Colors.transparent,
-        labelStyle: GoogleFonts.poppins(
+        labelStyle: const TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 14,
         ),
-        unselectedLabelStyle: GoogleFonts.poppins(
+        unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.w500,
           fontSize: 14,
         ),
