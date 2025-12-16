@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -105,41 +106,59 @@ class FileService {
   }
 
   Future<List<StatusItem>> _getStatusesViaSaf() async {
-    if (!_safService.hasAccess) return [];
+    if (!_safService.hasAccess) {
+      debugPrint('FileService: SAF has no access');
+      return [];
+    }
 
     final List<StatusItem> statuses = [];
 
     try {
+      debugPrint('FileService: Getting statuses via SAF...');
       final files = await _safService.listStatusFiles();
+      debugPrint('FileService: Found ${files.length} status files');
       
       for (final file in files) {
+        debugPrint('FileService: Processing ${file.name}...');
+        
         // Get a cached local copy for display
         final localPath = await _safService.getCachedCopy(file);
-        if (localPath == null) continue;
+        if (localPath == null) {
+          debugPrint('FileService: Failed to cache ${file.name}');
+          continue;
+        }
         
         final localFile = File(localPath);
-        if (!await localFile.exists()) continue;
+        if (!await localFile.exists()) {
+          debugPrint('FileService: Cached file does not exist: $localPath');
+          continue;
+        }
         
         final name = file.name;
         final isVideo = AppConstants.videoExtensions.any(
           (ext) => name.toLowerCase().endsWith(ext)
         );
         
+        // Use lastModified from SAF file, convert from milliseconds
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(file.lastModified);
+        
         final statusItem = StatusItem(
           path: localPath,
           name: name,
           isVideo: isVideo,
-          timestamp: DateTime.now(), // SAF doesn't always provide modified time
+          timestamp: timestamp,
           size: file.length,
           originalPath: file.uri,
         );
         
         statuses.add(statusItem);
+        debugPrint('FileService: Added ${file.name} (isVideo: $isVideo)');
       }
 
       statuses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      debugPrint('FileService: Total statuses loaded: ${statuses.length}');
     } catch (e) {
-      print('Error loading WhatsApp statuses via SAF: $e');
+      debugPrint('Error loading WhatsApp statuses via SAF: $e');
     }
 
     return statuses;

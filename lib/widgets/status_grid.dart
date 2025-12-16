@@ -68,40 +68,53 @@ class StatusGrid extends StatelessWidget {
   Widget _buildEmptyState(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            emptyIcon,
-            size: 80,
-            color: isDark 
-                ? AppColors.darkTextSecondary 
-                : AppColors.lightTextSecondary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            emptyMessage,
-            style: TextStyle(
-              fontSize: 16,
-              color: isDark 
-                  ? AppColors.darkTextSecondary 
-                  : AppColors.lightTextSecondary,
+    // Wrap in ListView to make it scrollable for RefreshIndicator
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: constraints.maxHeight,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      emptyIcon,
+                      size: 80,
+                      color: isDark 
+                          ? AppColors.darkTextSecondary 
+                          : AppColors.lightTextSecondary,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      emptyMessage,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isDark 
+                            ? AppColors.darkTextSecondary 
+                            : AppColors.lightTextSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Pull down to refresh',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark 
+                            ? AppColors.darkTextSecondary 
+                            : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Pull down to refresh',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark 
-                  ? AppColors.darkTextSecondary 
-                  : AppColors.lightTextSecondary,
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
