@@ -92,9 +92,11 @@ class SafService {
       }
       
       // Copy using SAF util
-      final result = await _safUtil.copyTo(file.uri, false, destPath);
+      await _safUtil.copyTo(file.uri, false, destPath);
       
-      if (result != null) {
+      // Check if file was created successfully
+      final destFile = File(destPath);
+      if (await destFile.exists()) {
         return destPath;
       }
       return null;
