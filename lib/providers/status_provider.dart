@@ -119,9 +119,15 @@ class StatusProvider extends ChangeNotifier {
     try {
       _liveStatuses = await _fileService.getWhatsAppStatuses();
       
+      // Auto-cache all live statuses to 7-day cache
+      for (final status in _liveStatuses) {
+        // Cache in background - don't await to keep UI responsive
+        _autoCacheStatus(status);
+      }
+      
       // Mark cached items
       for (var i = 0; i < _liveStatuses.length; i++) {
-        if (_cacheService.isCached(_liveStatuses[i].path)) {
+        if (_cacheService.isAlreadyCached(_liveStatuses[i].name)) {
           _liveStatuses[i] = _liveStatuses[i].copyWith(isCached: true);
         }
       }
@@ -133,6 +139,23 @@ class StatusProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+    
+    // Refresh cached statuses list after auto-caching
+    await refreshCachedStatuses();
+  }
+  
+  /// Auto-cache a status to the 7-day cache
+  Future<void> _autoCacheStatus(StatusItem status) async {
+    try {
+      await _cacheService.cacheStatusFromPath(
+        localPath: status.path,
+        fileName: status.name,
+        isVideo: status.isVideo,
+        fileSize: status.size,
+      );
+    } catch (e) {
+      // Silent fail - caching is not critical
+    }
   }
 
   Future<void> refreshSavedStatuses() async {

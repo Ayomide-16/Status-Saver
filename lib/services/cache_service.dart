@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import '../config/constants.dart';
@@ -13,6 +14,8 @@ class CacheService {
   late Box<CacheMetadata> _cacheBox;
   Directory? _cacheDir;
   Directory? _thumbnailsDir;
+
+  String? get cacheDirectoryPath => _cacheDir?.path;
 
   Future<void> initialize() async {
     _cacheBox = await Hive.openBox<CacheMetadata>(AppConstants.cacheMetadataBox);
@@ -31,40 +34,78 @@ class CacheService {
     }
   }
 
-  Future<void> cacheStatus(StatusItem status, {String? thumbnailPath}) async {
+  /// Check if a file is already cached by its original filename
+  bool isAlreadyCached(String fileName) {
+    return _cacheBox.values.any((m) => m.fileName == fileName && !m.isExpired);
+  }
+
+  /// Get cache metadata by filename
+  CacheMetadata? getCacheMetadataByName(String fileName) {
+    try {
+      return _cacheBox.values.firstWhere(
+        (m) => m.fileName == fileName && !m.isExpired,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Cache a status from a local path (used for auto-caching live statuses)
+  Future<void> cacheStatusFromPath({
+    required String localPath,
+    required String fileName,
+    required bool isVideo,
+    required int fileSize,
+    String? thumbnailPath,
+  }) async {
     if (_cacheDir == null) return;
 
-    // Check if already cached
-    if (_cacheBox.values.any((m) => m.originalPath == status.path)) {
+    // Check if already cached by filename (prevent duplicates)
+    if (isAlreadyCached(fileName)) {
+      debugPrint('Cache: $fileName already cached, skipping');
       return;
     }
 
     try {
-      final sourceFile = File(status.path);
-      if (!await sourceFile.exists()) return;
-
-      // Create cached file
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final cachedFileName = 'cached_$timestamp.${status.extension}';
-      final cachedPath = '${_cacheDir!.path}/$cachedFileName';
-
+      // Copy file to cache directory
+      final cachedPath = '${_cacheDir!.path}/$fileName';
+      final sourceFile = File(localPath);
+      
+      if (!await sourceFile.exists()) {
+        debugPrint('Cache: Source file does not exist: $localPath');
+        return;
+      }
+      
+      // Copy to cache
       await sourceFile.copy(cachedPath);
 
       // Store metadata
       final metadata = CacheMetadata.create(
-        originalPath: status.path,
+        originalPath: localPath,
         cachedPath: cachedPath,
-        isVideo: status.isVideo,
-        fileSize: status.size,
-        fileName: status.name,
+        isVideo: isVideo,
+        fileSize: fileSize,
+        fileName: fileName,
         cacheDurationDays: AppConstants.cacheDurationDays,
         thumbnailPath: thumbnailPath,
       );
 
-      await _cacheBox.put(status.path, metadata);
+      await _cacheBox.put(fileName, metadata);
+      debugPrint('Cache: Cached $fileName successfully');
     } catch (e) {
-      print('Error caching status: $e');
+      debugPrint('Cache: Error caching $fileName: $e');
     }
+  }
+
+  /// Legacy method - cache status from StatusItem
+  Future<void> cacheStatus(StatusItem status, {String? thumbnailPath}) async {
+    await cacheStatusFromPath(
+      localPath: status.path,
+      fileName: status.name,
+      isVideo: status.isVideo,
+      fileSize: status.size,
+      thumbnailPath: thumbnailPath,
+    );
   }
 
   Future<List<StatusItem>> getCachedStatuses() async {
@@ -95,6 +136,7 @@ class CacheService {
 
   Future<void> cleanupExpiredCache() async {
     final expiredKeys = <dynamic>[];
+    int cleanedCount = 0;
 
     for (final entry in _cacheBox.toMap().entries) {
       final metadata = entry.value;
@@ -106,6 +148,7 @@ class CacheService {
           final cachedFile = File(metadata.cachedPath);
           if (await cachedFile.exists()) {
             await cachedFile.delete();
+            cleanedCount++;
           }
 
           // Delete thumbnail if exists
@@ -116,7 +159,7 @@ class CacheService {
             }
           }
         } catch (e) {
-          print('Error deleting expired cache file: $e');
+          debugPrint('Cache: Error deleting expired file: $e');
         }
       }
     }
@@ -124,6 +167,10 @@ class CacheService {
     // Remove metadata entries
     for (final key in expiredKeys) {
       await _cacheBox.delete(key);
+    }
+    
+    if (cleanedCount > 0) {
+      debugPrint('Cache: Cleaned up $cleanedCount expired files');
     }
   }
 
@@ -142,11 +189,12 @@ class CacheService {
           }
         }
       } catch (e) {
-        print('Error clearing cache file: $e');
+        debugPrint('Cache: Error clearing file: $e');
       }
     }
 
     await _cacheBox.clear();
+    debugPrint('Cache: All cache cleared');
   }
 
   Future<void> removeFromCache(String cachedPath) async {
@@ -169,7 +217,7 @@ class CacheService {
             }
           }
         } catch (e) {
-          print('Error removing cache file: $e');
+          debugPrint('Cache: Error removing file: $e');
         }
       }
     }
@@ -201,7 +249,7 @@ class CacheService {
         }
       }
     } catch (e) {
-      print('Error calculating cache size: $e');
+      debugPrint('Cache: Error calculating size: $e');
     }
     return size;
   }
@@ -212,5 +260,12 @@ class CacheService {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  
+  /// Get days remaining for a cached file
+  int getDaysRemaining(String fileName) {
+    final metadata = getCacheMetadataByName(fileName);
+    if (metadata == null) return 0;
+    return metadata.daysUntilExpiry;
   }
 }

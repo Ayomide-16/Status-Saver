@@ -64,6 +64,8 @@ class CacheMetadata extends HiveObject {
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 
   Duration get remainingTime => expiresAt.difference(DateTime.now());
+  
+  int get daysUntilExpiry => isExpired ? 0 : remainingTime.inDays;
 
   String get formattedRemainingTime {
     if (isExpired) return 'Expired';

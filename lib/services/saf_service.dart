@@ -30,21 +30,23 @@ class SafService {
     _settingsBox = await Hive.openBox(_safBoxName);
     _grantedUri = _settingsBox?.get(_uriKey);
     
-    debugPrint('SAF: Initialized. Has access: $hasAccess');
+    debugPrint('SAF: Initialized. Stored URI: $_grantedUri');
     
-    // Verify the URI is still valid
-    if (_grantedUri != null) {
+    // Only verify if we have a stored URI
+    if (_grantedUri != null && _grantedUri!.isNotEmpty) {
+      // Try to list files - if it works, permission is valid
       try {
-        final hasPermission = await _safUtil.hasPersistedPermission(_grantedUri!);
-        debugPrint('SAF: Permission valid: $hasPermission');
-        if (!hasPermission) {
+        final files = await _safUtil.list(_grantedUri!);
+        debugPrint('SAF: Permission valid - found ${files.length} files');
+      } catch (e) {
+        // Only clear if it's a permission error
+        debugPrint('SAF: Permission check failed: $e');
+        final errorStr = e.toString().toLowerCase();
+        if (errorStr.contains('permission') || errorStr.contains('denied') || errorStr.contains('security')) {
+          debugPrint('SAF: Clearing invalid permission');
           _grantedUri = null;
           await _settingsBox?.delete(_uriKey);
         }
-      } catch (e) {
-        debugPrint('SAF: Permission check error: $e');
-        _grantedUri = null;
-        await _settingsBox?.delete(_uriKey);
       }
     }
   }
@@ -94,10 +96,6 @@ class SafService {
       }).toList();
       
       debugPrint('SAF: Media files: ${filtered.length}');
-      for (final f in filtered) {
-        debugPrint('SAF: - ${f.name}');
-      }
-      
       return filtered;
     } catch (e) {
       debugPrint('SAF: List error: $e');
@@ -129,7 +127,6 @@ class SafService {
       // Check if already cached
       final cachedFile = File(cachedPath);
       if (await cachedFile.exists()) {
-        debugPrint('SAF: Using cached: ${file.name}');
         return cachedPath;
       }
       
@@ -139,20 +136,42 @@ class SafService {
         await dir.create(recursive: true);
       }
       
-      debugPrint('SAF: Copying ${file.name} to cache...');
-      
       // Use native Android method to copy content:// URI to local file
       final success = await _copyContentUriToFile(file.uri, cachedPath);
       
       if (success && await cachedFile.exists()) {
-        debugPrint('SAF: Copied ${file.name} successfully');
+        debugPrint('SAF: Cached ${file.name}');
         return cachedPath;
       }
       
-      debugPrint('SAF: Failed to copy ${file.name}');
+      debugPrint('SAF: Failed to cache ${file.name}');
       return null;
     } catch (e) {
       debugPrint('SAF: Cache error: $e');
+      return null;
+    }
+  }
+
+  /// Cache a file to the 7-day cache directory
+  Future<String?> cacheToWeeklyStorage(SafDocumentFile file, String cacheDir) async {
+    try {
+      final cachedPath = '$cacheDir/${file.name}';
+      
+      // Check if already exists
+      final cachedFile = File(cachedPath);
+      if (await cachedFile.exists()) {
+        return cachedPath;
+      }
+      
+      // Copy using native method
+      final success = await _copyContentUriToFile(file.uri, cachedPath);
+      
+      if (success && await cachedFile.exists()) {
+        return cachedPath;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('SAF: Weekly cache error: $e');
       return null;
     }
   }
@@ -164,13 +183,13 @@ class SafService {
   }
   
   /// Clear cached status files
-  Future<void> clearCache() async {
+  Future<void> clearTempCache() async {
     try {
       final tempDir = await getTemporaryDirectory();
       final cacheDir = Directory('${tempDir.path}/status_cache');
       if (await cacheDir.exists()) {
         await cacheDir.delete(recursive: true);
-        debugPrint('SAF: Cache cleared');
+        debugPrint('SAF: Temp cache cleared');
       }
     } catch (e) {
       debugPrint('SAF: Clear cache error: $e');
