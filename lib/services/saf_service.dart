@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:saf_util/saf_util.dart';
 import 'package:saf_util/saf_util_platform_interface.dart';
@@ -15,6 +16,9 @@ class SafService {
   static const String _safBoxName = 'saf_settings';
   static const String _uriKey = 'whatsapp_status_uri';
   
+  // Platform channel for native file operations
+  static const MethodChannel _channel = MethodChannel('status_saver/saf');
+  
   Box? _settingsBox;
   String? _grantedUri;
   final _safUtil = SafUtil();
@@ -26,19 +30,19 @@ class SafService {
     _settingsBox = await Hive.openBox(_safBoxName);
     _grantedUri = _settingsBox?.get(_uriKey);
     
-    debugPrint('SAF Service initialized. Has access: $hasAccess, URI: $_grantedUri');
+    debugPrint('SAF: Initialized. Has access: $hasAccess');
     
     // Verify the URI is still valid
     if (_grantedUri != null) {
       try {
         final hasPermission = await _safUtil.hasPersistedPermission(_grantedUri!);
-        debugPrint('SAF permission check: $hasPermission');
+        debugPrint('SAF: Permission valid: $hasPermission');
         if (!hasPermission) {
           _grantedUri = null;
           await _settingsBox?.delete(_uriKey);
         }
       } catch (e) {
-        debugPrint('SAF permission check error: $e');
+        debugPrint('SAF: Permission check error: $e');
         _grantedUri = null;
         await _settingsBox?.delete(_uriKey);
       }
@@ -48,9 +52,8 @@ class SafService {
   /// Request user to pick WhatsApp status folder
   Future<bool> requestFolderAccess() async {
     try {
-      debugPrint('Requesting folder access via SAF picker...');
+      debugPrint('SAF: Opening folder picker...');
       
-      // Open directory picker
       final directory = await _safUtil.pickDirectory(
         writePermission: false,
       );
@@ -58,13 +61,13 @@ class SafService {
       if (directory != null) {
         _grantedUri = directory.uri;
         await _settingsBox?.put(_uriKey, _grantedUri);
-        debugPrint('SAF folder access granted: $_grantedUri');
+        debugPrint('SAF: Folder access granted: $_grantedUri');
         return true;
       }
-      debugPrint('SAF folder picker cancelled');
+      debugPrint('SAF: Folder picker cancelled');
       return false;
     } catch (e) {
-      debugPrint('Error requesting folder access: $e');
+      debugPrint('SAF: Folder access error: $e');
       return false;
     }
   }
@@ -72,14 +75,14 @@ class SafService {
   /// List files from the granted folder
   Future<List<SafDocumentFile>> listStatusFiles() async {
     if (!hasAccess) {
-      debugPrint('SAF: No access to list files');
+      debugPrint('SAF: No access');
       return [];
     }
     
     try {
       debugPrint('SAF: Listing files from $_grantedUri');
       final files = await _safUtil.list(_grantedUri!);
-      debugPrint('SAF: Found ${files.length} total files');
+      debugPrint('SAF: Total files found: ${files.length}');
       
       // Filter to only images and videos
       final filtered = files.where((file) {
@@ -90,11 +93,29 @@ class SafService {
         return isImage || isVideo;
       }).toList();
       
-      debugPrint('SAF: ${filtered.length} media files after filtering');
+      debugPrint('SAF: Media files: ${filtered.length}');
+      for (final f in filtered) {
+        debugPrint('SAF: - ${f.name}');
+      }
+      
       return filtered;
     } catch (e) {
-      debugPrint('Error listing status files: $e');
+      debugPrint('SAF: List error: $e');
       return [];
+    }
+  }
+
+  /// Copy a content:// URI file to local storage using native Android code
+  Future<bool> _copyContentUriToFile(String uri, String destPath) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('copyContentUriToFile', {
+        'uri': uri,
+        'destPath': destPath,
+      });
+      return result ?? false;
+    } catch (e) {
+      debugPrint('SAF: Native copy error: $e');
+      return false;
     }
   }
 
@@ -108,39 +129,30 @@ class SafService {
       // Check if already cached
       final cachedFile = File(cachedPath);
       if (await cachedFile.exists()) {
-        debugPrint('SAF: Using cached file: $cachedPath');
+        debugPrint('SAF: Using cached: ${file.name}');
         return cachedPath;
       }
       
-      // Create cache directory if needed
+      // Create cache directory
       final dir = Directory(cacheDir);
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
       
-      debugPrint('SAF: Copying file ${file.name} to cache...');
+      debugPrint('SAF: Copying ${file.name} to cache...');
       
-      // Use copyTo to copy file to local storage
-      try {
-        await _safUtil.copyTo(file.uri, false, cachedPath);
-        
-        // Verify the file was copied
-        if (await cachedFile.exists()) {
-          debugPrint('SAF: File copied successfully to $cachedPath');
-          return cachedPath;
-        } else {
-          debugPrint('SAF: copyTo completed but file not found at $cachedPath');
-        }
-      } catch (copyError) {
-        debugPrint('SAF: copyTo failed: $copyError');
+      // Use native Android method to copy content:// URI to local file
+      final success = await _copyContentUriToFile(file.uri, cachedPath);
+      
+      if (success && await cachedFile.exists()) {
+        debugPrint('SAF: Copied ${file.name} successfully');
+        return cachedPath;
       }
       
-      // The copyTo method should work, if it doesn't we just return null
-      // as there's no good alternative in saf_util 0.11.0
-      debugPrint('SAF: All copy methods failed for ${file.name}');
+      debugPrint('SAF: Failed to copy ${file.name}');
       return null;
     } catch (e) {
-      debugPrint('Error getting cached copy: $e');
+      debugPrint('SAF: Cache error: $e');
       return null;
     }
   }
@@ -161,7 +173,7 @@ class SafService {
         debugPrint('SAF: Cache cleared');
       }
     } catch (e) {
-      debugPrint('Error clearing cache: $e');
+      debugPrint('SAF: Clear cache error: $e');
     }
   }
 }
