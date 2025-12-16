@@ -40,6 +40,8 @@ class StatusProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   
   bool get hasWhatsApp => _fileService.hasWhatsAppStatus;
+  bool get needsSafAccess => _fileService.useSaf && !_fileService.hasSafAccess;
+  bool get useSaf => _fileService.useSaf;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -86,6 +88,16 @@ class StatusProvider extends ChangeNotifier {
     
     notifyListeners();
     return _hasPermission;
+  }
+
+  /// Request SAF folder access (Android 11+)
+  Future<bool> requestSafAccess() async {
+    final success = await _fileService.requestSafAccess();
+    if (success) {
+      await refreshLiveStatuses();
+    }
+    notifyListeners();
+    return success;
   }
 
   Future<void> openSettings() async {

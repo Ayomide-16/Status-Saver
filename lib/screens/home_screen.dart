@@ -158,6 +158,13 @@ class _HomeScreenState extends State<HomeScreen>
           );
         }
 
+        // Show SAF access dialog for Android 11+ (API 30+)
+        if (provider.needsSafAccess && provider.isInitialized) {
+          return SafAccessDialog(
+            onRequestAccess: () => provider.requestSafAccess(),
+          );
+        }
+
         // Show no WhatsApp dialog
         if (provider.isInitialized && !provider.hasWhatsApp && provider.hasPermission) {
           return const NoWhatsAppDialog();

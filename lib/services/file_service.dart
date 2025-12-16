@@ -1,23 +1,48 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../config/constants.dart';
 import '../models/status_item.dart';
+import 'saf_service.dart';
 
 class FileService {
   static final FileService _instance = FileService._internal();
   factory FileService() => _instance;
   FileService._internal();
 
+  final SafService _safService = SafService();
+  
   Directory? _whatsAppStatusDir;
   Directory? _savedStatusDir;
   Directory? _cacheDir;
   Directory? _thumbnailsDir;
+  
+  bool _useSaf = false;
+  int _androidSdkVersion = 0;
 
   Future<void> initialize() async {
-    await _findWhatsAppStatusDirectory();
+    if (Platform.isAndroid) {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      _androidSdkVersion = androidInfo.version.sdkInt;
+      
+      // Android 11+ (API 30) requires SAF
+      _useSaf = _androidSdkVersion >= 30;
+      
+      if (_useSaf) {
+        await _safService.initialize();
+      } else {
+        await _findWhatsAppStatusDirectory();
+      }
+    }
+    
     await _initializeAppDirectories();
   }
+
+  bool get useSaf => _useSaf;
+  bool get hasSafAccess => _safService.hasAccess;
+  int get androidSdkVersion => _androidSdkVersion;
 
   Future<void> _findWhatsAppStatusDirectory() async {
     if (!Platform.isAndroid) return;
@@ -26,6 +51,7 @@ class FileService {
       final dir = Directory(path);
       if (await dir.exists()) {
         _whatsAppStatusDir = dir;
+        print('Found WhatsApp status at: $path');
         break;
       }
     }
@@ -54,14 +80,72 @@ class FileService {
     }
   }
 
-  bool get hasWhatsAppStatus => _whatsAppStatusDir != null;
+  bool get hasWhatsAppStatus {
+    if (_useSaf) {
+      return _safService.hasAccess;
+    }
+    return _whatsAppStatusDir != null;
+  }
 
   Directory? get whatsAppStatusDir => _whatsAppStatusDir;
   Directory? get savedStatusDir => _savedStatusDir;
   Directory? get cacheDir => _cacheDir;
   Directory? get thumbnailsDir => _thumbnailsDir;
 
+  /// Request SAF folder access (Android 11+)
+  Future<bool> requestSafAccess() async {
+    return await _safService.requestFolderAccess();
+  }
+
   Future<List<StatusItem>> getWhatsAppStatuses() async {
+    if (_useSaf) {
+      return await _getStatusesViaSaf();
+    }
+    return await _getStatusesViaDirectAccess();
+  }
+
+  Future<List<StatusItem>> _getStatusesViaSaf() async {
+    if (!_safService.hasAccess) return [];
+
+    final List<StatusItem> statuses = [];
+
+    try {
+      final files = await _safService.listStatusFiles();
+      
+      for (final file in files) {
+        // Get a cached local copy for display
+        final localPath = await _safService.getCachedCopy(file);
+        if (localPath == null) continue;
+        
+        final localFile = File(localPath);
+        if (!await localFile.exists()) continue;
+        
+        final name = file.name;
+        final isVideo = AppConstants.videoExtensions.any(
+          (ext) => name.toLowerCase().endsWith(ext)
+        );
+        
+        final statusItem = StatusItem(
+          path: localPath,
+          name: name,
+          isVideo: isVideo,
+          timestamp: DateTime.now(), // SAF doesn't always provide modified time
+          size: file.length,
+          originalPath: file.uri,
+        );
+        
+        statuses.add(statusItem);
+      }
+
+      statuses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    } catch (e) {
+      print('Error loading WhatsApp statuses via SAF: $e');
+    }
+
+    return statuses;
+  }
+
+  Future<List<StatusItem>> _getStatusesViaDirectAccess() async {
     if (_whatsAppStatusDir == null || !await _whatsAppStatusDir!.exists()) {
       return [];
     }
@@ -84,7 +168,6 @@ class FileService {
         }
       }
 
-      // Sort by timestamp (newest first)
       statuses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     } catch (e) {
       print('Error loading WhatsApp statuses: $e');
