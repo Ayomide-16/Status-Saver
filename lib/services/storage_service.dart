@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import '../config/constants.dart';
 import '../models/status_item.dart';
 
@@ -10,6 +12,7 @@ class StorageService {
   StorageService._internal();
 
   Directory? _savedDir;
+  Directory? _thumbnailsDir;
 
   Future<void> initialize() async {
     final appDir = await getExternalStorageDirectory();
@@ -17,6 +20,12 @@ class StorageService {
       _savedDir = Directory('${appDir.path}/${AppConstants.savedFolderName}');
       if (!await _savedDir!.exists()) {
         await _savedDir!.create(recursive: true);
+      }
+      
+      // Create thumbnails directory
+      _thumbnailsDir = Directory('${appDir.path}/${AppConstants.thumbnailsFolderName}');
+      if (!await _thumbnailsDir!.exists()) {
+        await _thumbnailsDir!.create(recursive: true);
       }
     }
 
@@ -28,11 +37,37 @@ class StorageService {
       }
       _savedDir = externalDir;
     } catch (e) {
-      print('Could not create external saved folder: $e');
+      debugPrint('Could not create external saved folder: $e');
     }
   }
 
   Directory? get savedDir => _savedDir;
+
+  /// Generate thumbnail for a video
+  Future<String?> _generateThumbnail(String videoPath, String fileName) async {
+    if (_thumbnailsDir == null) return null;
+    
+    // Check if thumbnail already exists
+    final thumbName = '${fileName.split('.').first}_thumb.jpg';
+    final existingThumb = File('${_thumbnailsDir!.path}/$thumbName');
+    if (await existingThumb.exists()) {
+      return existingThumb.path;
+    }
+
+    try {
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: _thumbnailsDir!.path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: AppConstants.thumbnailWidth,
+        quality: AppConstants.thumbnailQuality,
+      );
+      return thumbnailPath;
+    } catch (e) {
+      debugPrint('Error generating thumbnail for saved video: $e');
+      return null;
+    }
+  }
 
   Future<bool> saveStatus(StatusItem status) async {
     if (_savedDir == null) {
@@ -50,10 +85,14 @@ class StorageService {
 
       await sourceFile.copy(destPath);
       
+      // Generate thumbnail for videos
+      if (status.isVideo) {
+        await _generateThumbnail(destPath, newFileName);
+      }
+      
       // Notify media scanner on Android
       if (Platform.isAndroid) {
         try {
-          // The file should appear in gallery after this
           Process.run('am', [
             'broadcast',
             '-a',
@@ -62,13 +101,13 @@ class StorageService {
             'file://$destPath'
           ]);
         } catch (e) {
-          print('Could not notify media scanner: $e');
+          debugPrint('Could not notify media scanner: $e');
         }
       }
 
       return true;
     } catch (e) {
-      print('Error saving status: $e');
+      debugPrint('Error saving status: $e');
       return false;
     }
   }
@@ -93,15 +132,26 @@ class StorageService {
           final isVideo = AppConstants.videoExtensions.contains('.$extension');
 
           if (isImage || isVideo) {
+            final fileName = file.path.split(Platform.pathSeparator).last;
+            
+            // Generate thumbnail for videos
+            String? thumbnailPath;
+            if (isVideo) {
+              thumbnailPath = await _generateThumbnail(file.path, fileName);
+            }
+            
             final statusItem = StatusItem.fromFile(file, isVideo: isVideo);
-            statuses.add(statusItem.copyWith(isSaved: true));
+            statuses.add(statusItem.copyWith(
+              isSaved: true,
+              thumbnailPath: thumbnailPath,
+            ));
           }
         }
       }
 
       statuses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     } catch (e) {
-      print('Error loading saved statuses: $e');
+      debugPrint('Error loading saved statuses: $e');
     }
 
     return statuses;
@@ -112,11 +162,20 @@ class StorageService {
       final file = File(status.path);
       if (await file.exists()) {
         await file.delete();
+        
+        // Also delete thumbnail if exists
+        if (status.thumbnailPath != null) {
+          final thumbFile = File(status.thumbnailPath!);
+          if (await thumbFile.exists()) {
+            await thumbFile.delete();
+          }
+        }
+        
         return true;
       }
       return false;
     } catch (e) {
-      print('Error deleting status: $e');
+      debugPrint('Error deleting status: $e');
       return false;
     }
   }
@@ -128,7 +187,7 @@ class StorageService {
         text: 'Check out this status!',
       );
     } catch (e) {
-      print('Error sharing status: $e');
+      debugPrint('Error sharing status: $e');
     }
   }
 
@@ -148,7 +207,7 @@ class StorageService {
         }
       }
     } catch (e) {
-      print('Error counting saved statuses: $e');
+      debugPrint('Error counting saved statuses: $e');
     }
     return count;
   }
@@ -167,7 +226,7 @@ class StorageService {
         }
       }
     } catch (e) {
-      print('Error calculating saved size: $e');
+      debugPrint('Error calculating saved size: $e');
     }
     return size;
   }

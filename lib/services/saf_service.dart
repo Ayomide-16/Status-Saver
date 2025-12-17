@@ -30,25 +30,10 @@ class SafService {
     _settingsBox = await Hive.openBox(_safBoxName);
     _grantedUri = _settingsBox?.get(_uriKey);
     
-    debugPrint('SAF: Initialized. Stored URI: $_grantedUri');
+    debugPrint('SAF: Initialized. Has stored URI: ${_grantedUri != null && _grantedUri!.isNotEmpty}');
     
-    // Only verify if we have a stored URI
-    if (_grantedUri != null && _grantedUri!.isNotEmpty) {
-      // Try to list files - if it works, permission is valid
-      try {
-        final files = await _safUtil.list(_grantedUri!);
-        debugPrint('SAF: Permission valid - found ${files.length} files');
-      } catch (e) {
-        // Only clear if it's a permission error
-        debugPrint('SAF: Permission check failed: $e');
-        final errorStr = e.toString().toLowerCase();
-        if (errorStr.contains('permission') || errorStr.contains('denied') || errorStr.contains('security')) {
-          debugPrint('SAF: Clearing invalid permission');
-          _grantedUri = null;
-          await _settingsBox?.delete(_uriKey);
-        }
-      }
-    }
+    // Trust the stored URI - don't verify on startup
+    // Verification happens lazily when actually listing files
   }
 
   /// Request user to pick WhatsApp status folder

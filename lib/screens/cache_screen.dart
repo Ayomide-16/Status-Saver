@@ -33,13 +33,16 @@ class _CacheScreenState extends State<CacheScreen>
   }
 
   void _openStatus(status) {
+    final provider = context.read<StatusProvider>();
+    final isAlreadySaved = provider.isStatusDownloaded(status.name) || status.isSaved;
+    
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => StatusViewer(
           status: status,
+          isAlreadySaved: isAlreadySaved,
           onSave: () async {
-            final provider = context.read<StatusProvider>();
             final success = await provider.saveStatus(status);
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(

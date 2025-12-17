@@ -13,6 +13,7 @@ class StatusViewer extends StatefulWidget {
   final bool showSave;
   final bool showShare;
   final bool showDelete;
+  final bool isAlreadySaved;
 
   const StatusViewer({
     super.key,
@@ -23,6 +24,7 @@ class StatusViewer extends StatefulWidget {
     this.showSave = true,
     this.showShare = false,
     this.showDelete = false,
+    this.isAlreadySaved = false,
   });
 
   @override
@@ -32,10 +34,12 @@ class StatusViewer extends StatefulWidget {
 class _StatusViewerState extends State<StatusViewer> {
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
+  late bool _isSaved;
 
   @override
   void initState() {
     super.initState();
+    _isSaved = widget.isAlreadySaved || widget.status.isSaved;
     if (widget.status.isVideo) {
       _initializeVideo();
     }
@@ -49,7 +53,7 @@ class _StatusViewerState extends State<StatusViewer> {
       setState(() => _isVideoInitialized = true);
       _videoController!.play();
     } catch (e) {
-      print('Error initializing video: $e');
+      debugPrint('Error initializing video: $e');
     }
   }
 
@@ -57,6 +61,13 @@ class _StatusViewerState extends State<StatusViewer> {
   void dispose() {
     _videoController?.dispose();
     super.dispose();
+  }
+
+  void _handleSave() {
+    if (_isSaved) return; // Already saved, do nothing
+    
+    widget.onSave?.call();
+    setState(() => _isSaved = true);
   }
 
   @override
@@ -71,12 +82,27 @@ class _StatusViewerState extends State<StatusViewer> {
           style: const TextStyle(color: Colors.white),
         ),
         actions: [
+          // Save/Downloaded button
           if (widget.showSave && widget.onSave != null)
-            IconButton(
-              icon: const Icon(Icons.download_rounded),
-              onPressed: widget.onSave,
-              tooltip: 'Save',
-            ),
+            _isSaved
+                ? Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: AppColors.success,
+                      size: 24,
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.download_rounded),
+                    onPressed: _handleSave,
+                    tooltip: 'Save',
+                  ),
           if (widget.showShare && widget.onShare != null)
             IconButton(
               icon: const Icon(Icons.share_rounded),
