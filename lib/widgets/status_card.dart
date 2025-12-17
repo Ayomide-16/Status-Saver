@@ -185,25 +185,40 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
     }
 
     if (widget.status.isVideo) {
-      // Show thumbnail or placeholder for video
-      return Container(
-        color: isDark ? AppColors.darkCard : AppColors.lightCard,
-        child: Center(
-          child: Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withValues(alpha: 0.9),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.play_arrow_rounded,
-              size: 36,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      );
+      // Check if we have a thumbnail
+      if (widget.status.thumbnailPath != null) {
+        final thumbnailFile = File(widget.status.thumbnailPath!);
+        if (thumbnailFile.existsSync()) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.file(
+                thumbnailFile,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildVideoPlaceholder(isDark),
+              ),
+              // Play button overlay
+              Center(
+                child: Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    size: 32,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+      }
+      // Fallback to placeholder
+      return _buildVideoPlaceholder(isDark);
     }
 
     return Image.file(
@@ -212,6 +227,27 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
       errorBuilder: (_, __, ___) => Container(
         color: isDark ? AppColors.darkCard : AppColors.lightCard,
         child: const Icon(Icons.broken_image_outlined),
+      ),
+    );
+  }
+
+  Widget _buildVideoPlaceholder(bool isDark) {
+    return Container(
+      color: isDark ? AppColors.darkCard : AppColors.lightCard,
+      child: Center(
+        child: Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: AppColors.primaryGreen.withValues(alpha: 0.9),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.play_arrow_rounded,
+            size: 36,
+            color: Colors.white,
+          ),
+        ),
       ),
     );
   }

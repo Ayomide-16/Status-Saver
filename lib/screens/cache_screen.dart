@@ -124,7 +124,7 @@ class _CacheScreenState extends State<CacheScreen>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Cached statuses expire after 7 days',
+                        'Recent statuses are stored temporarily for 7 days. Save them to keep permanently.',
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark 

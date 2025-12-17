@@ -119,18 +119,14 @@ class FileService {
       debugPrint('FileService: Found ${files.length} status files');
       
       for (final file in files) {
-        debugPrint('FileService: Processing ${file.name}...');
-        
         // Get a cached local copy for display
         final localPath = await _safService.getCachedCopy(file);
         if (localPath == null) {
-          debugPrint('FileService: Failed to cache ${file.name}');
           continue;
         }
         
         final localFile = File(localPath);
         if (!await localFile.exists()) {
-          debugPrint('FileService: Cached file does not exist: $localPath');
           continue;
         }
         
@@ -142,6 +138,12 @@ class FileService {
         // Use lastModified from SAF file, convert from milliseconds
         final timestamp = DateTime.fromMillisecondsSinceEpoch(file.lastModified);
         
+        // Generate thumbnail for videos
+        String? thumbnailPath;
+        if (isVideo) {
+          thumbnailPath = await generateThumbnail(localPath);
+        }
+        
         final statusItem = StatusItem(
           path: localPath,
           name: name,
@@ -149,10 +151,10 @@ class FileService {
           timestamp: timestamp,
           size: file.length,
           originalPath: file.uri,
+          thumbnailPath: thumbnailPath,
         );
         
         statuses.add(statusItem);
-        debugPrint('FileService: Added ${file.name} (isVideo: $isVideo)');
       }
 
       statuses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
