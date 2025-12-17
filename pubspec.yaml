@@ -51,12 +51,11 @@ dev_dependencies:
 
 # App Icon Configuration
 flutter_launcher_icons:
-  android: true
+  android: "launcher_icon"
   ios: true
   image_path: "ICON.png"
   adaptive_icon_background: "#1a1a1a"
   adaptive_icon_foreground: "ICON.png"
-  adaptive_icon_padding: 15
   min_sdk_android: 21
   remove_alpha_ios: true
   web:

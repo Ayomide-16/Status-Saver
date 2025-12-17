@@ -13,46 +13,53 @@ const String periodicCacheTask = 'com.statussaver.periodic_cache';
 
 /// Initialize the background worker
 Future<void> initializeBackgroundService() async {
-  await Workmanager().initialize(
-    callbackDispatcher,
-    isInDebugMode: kDebugMode,
-  );
-  
-  // Cancel any existing tasks first
-  await Workmanager().cancelByUniqueName(periodicCacheTask);
-  
-  // Register periodic task - runs every 15 minutes (minimum for WorkManager)
-  await Workmanager().registerPeriodicTask(
-    periodicCacheTask,
-    backgroundCacheTask,
-    frequency: const Duration(minutes: 15),
-    constraints: Constraints(
-      networkType: NetworkType.not_required,
-      requiresBatteryNotLow: false,
-      requiresCharging: false,
-      requiresDeviceIdle: false,
-      requiresStorageNotLow: false,
-    ),
-    existingWorkPolicy: ExistingWorkPolicy.replace,
-    backoffPolicy: BackoffPolicy.linear,
-    backoffPolicyDelay: const Duration(minutes: 5),
-  );
-  
-  debugPrint('Background: Periodic caching task registered (every 15 min)');
-  
-  // Also run once immediately
-  await Workmanager().registerOneOffTask(
-    '${periodicCacheTask}_immediate',
-    backgroundCacheTask,
-    initialDelay: const Duration(seconds: 10),
-  );
+  try {
+    await Workmanager().initialize(
+      callbackDispatcher,
+      isInDebugMode: kDebugMode,
+    );
+    
+    // Cancel any existing tasks first
+    await Workmanager().cancelAll();
+    
+    // Register periodic task - runs every 15 minutes (minimum for WorkManager)
+    await Workmanager().registerPeriodicTask(
+      periodicCacheTask,
+      backgroundCacheTask,
+      frequency: const Duration(minutes: 15),
+      constraints: Constraints(
+        networkType: NetworkType.not_required,
+        requiresBatteryNotLow: false,
+        requiresCharging: false,
+        requiresDeviceIdle: false,
+        requiresStorageNotLow: false,
+      ),
+      existingWorkPolicy: ExistingWorkPolicy.replace,
+      backoffPolicy: BackoffPolicy.linear,
+      backoffPolicyDelay: const Duration(minutes: 5),
+    );
+    
+    debugPrint('Background: Periodic caching task registered (every 15 min)');
+    
+    // Also run once immediately after 30 seconds
+    await Workmanager().registerOneOffTask(
+      '${periodicCacheTask}_startup',
+      backgroundCacheTask,
+      initialDelay: const Duration(seconds: 30),
+    );
+    
+    debugPrint('Background: One-off startup task scheduled');
+  } catch (e) {
+    debugPrint('Background: Failed to initialize: $e');
+  }
 }
 
 /// Top-level callback for WorkManager - MUST be a top-level function
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    debugPrint('Background: Executing task: $task at ${DateTime.now()}');
+    debugPrint('Background: ========= TASK STARTED =========');
+    debugPrint('Background: Task: $task at ${DateTime.now()}');
     
     try {
       // Initialize Hive for background
@@ -62,44 +69,48 @@ void callbackDispatcher() {
       }
       
       // Run the caching logic
-      await _backgroundCacheStatuses();
+      final result = await _backgroundCacheStatuses();
       
-      debugPrint('Background: Task completed successfully');
-      return true;
+      debugPrint('Background: ========= TASK COMPLETED: $result =========');
+      return result;
     } catch (e, stack) {
-      debugPrint('Background: Task failed: $e\n$stack');
+      debugPrint('Background: ========= TASK FAILED =========');
+      debugPrint('Background: Error: $e');
+      debugPrint('Background: Stack: $stack');
       return false;
     }
   });
 }
 
 /// Cache WhatsApp statuses in background
-Future<void> _backgroundCacheStatuses() async {
+Future<bool> _backgroundCacheStatuses() async {
   debugPrint('Background: Starting status caching...');
   
   Box<CacheMetadata>? cacheBox;
   
   try {
     cacheBox = await Hive.openBox<CacheMetadata>(AppConstants.cacheMetadataBox);
+    debugPrint('Background: Cache box opened with ${cacheBox.length} existing entries');
     
     // Get app directories
     final appDir = await getExternalStorageDirectory();
     if (appDir == null) {
-      debugPrint('Background: No external storage directory');
-      return;
+      debugPrint('Background: ERROR - No external storage directory');
+      return false;
     }
     
     final cacheDir = Directory('${appDir.path}/${AppConstants.cacheFolderName}');
     if (!await cacheDir.exists()) {
       await cacheDir.create(recursive: true);
     }
+    debugPrint('Background: Cache dir: ${cacheDir.path}');
     
     final thumbnailsDir = Directory('${appDir.path}/${AppConstants.thumbnailsFolderName}');
     if (!await thumbnailsDir.exists()) {
       await thumbnailsDir.create(recursive: true);
     }
     
-    // Find WhatsApp status directory
+    // Find WhatsApp status directory - try multiple paths
     Directory? statusDir;
     for (final path in AppConstants.whatsAppStatusPaths) {
       final dir = Directory(path);
@@ -110,21 +121,24 @@ Future<void> _backgroundCacheStatuses() async {
       }
     }
     
+    // Also check the SAF temp cache directory as fallback
     if (statusDir == null) {
-      debugPrint('Background: WhatsApp status directory not found');
-      // Also check the SAF temp cache directory
       final tempDir = await getTemporaryDirectory();
       final safCacheDir = Directory('${tempDir.path}/status_cache');
       if (await safCacheDir.exists()) {
         statusDir = safCacheDir;
-        debugPrint('Background: Using SAF cache as source');
-      } else {
-        return;
+        debugPrint('Background: Using SAF cache as source: ${safCacheDir.path}');
       }
+    }
+    
+    if (statusDir == null) {
+      debugPrint('Background: ERROR - No status directory found');
+      return false;
     }
     
     int cachedCount = 0;
     int skippedCount = 0;
+    int errorCount = 0;
     
     final files = await statusDir.list().toList();
     debugPrint('Background: Found ${files.length} files to process');
@@ -166,7 +180,7 @@ Future<void> _backgroundCacheStatuses() async {
                 quality: AppConstants.thumbnailQuality,
               );
             } catch (e) {
-              debugPrint('Background: Thumbnail failed for $fileName: $e');
+              debugPrint('Background: Thumbnail failed for $fileName');
             }
           }
           
@@ -186,6 +200,7 @@ Future<void> _backgroundCacheStatuses() async {
           cachedCount++;
         } catch (e) {
           debugPrint('Background: Error caching $fileName: $e');
+          errorCount++;
         }
       }
     }
@@ -213,7 +228,14 @@ Future<void> _backgroundCacheStatuses() async {
       await cacheBox.delete(key);
     }
     
-    debugPrint('Background: Cached $cachedCount new, skipped $skippedCount existing, cleaned $cleanedCount expired');
+    await cacheBox.flush();
+    
+    debugPrint('Background: Summary - Cached: $cachedCount, Skipped: $skippedCount, Errors: $errorCount, Cleaned: $cleanedCount');
+    
+    return true;
+  } catch (e) {
+    debugPrint('Background: Fatal error: $e');
+    return false;
   } finally {
     await cacheBox?.close();
   }
@@ -221,14 +243,19 @@ Future<void> _backgroundCacheStatuses() async {
 
 /// Run background cache manually (for testing or on-demand)
 Future<void> runBackgroundCacheNow() async {
-  await Workmanager().registerOneOffTask(
-    '${periodicCacheTask}_manual_${DateTime.now().millisecondsSinceEpoch}',
-    backgroundCacheTask,
-  );
+  try {
+    await Workmanager().registerOneOffTask(
+      '${periodicCacheTask}_manual_${DateTime.now().millisecondsSinceEpoch}',
+      backgroundCacheTask,
+    );
+    debugPrint('Background: Manual cache task scheduled');
+  } catch (e) {
+    debugPrint('Background: Failed to schedule manual task: $e');
+  }
 }
 
 /// Cancel background tasks
 Future<void> cancelBackgroundService() async {
-  await Workmanager().cancelByUniqueName(periodicCacheTask);
-  debugPrint('Background: Periodic task cancelled');
+  await Workmanager().cancelAll();
+  debugPrint('Background: All tasks cancelled');
 }

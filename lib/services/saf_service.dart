@@ -27,13 +27,19 @@ class SafService {
   String? get grantedUri => _grantedUri;
 
   Future<void> initialize() async {
-    _settingsBox = await Hive.openBox(_safBoxName);
-    _grantedUri = _settingsBox?.get(_uriKey);
-    
-    debugPrint('SAF: Initialized. Has stored URI: ${_grantedUri != null && _grantedUri!.isNotEmpty}');
-    
-    // Trust the stored URI - don't verify on startup
-    // Verification happens lazily when actually listing files
+    try {
+      _settingsBox = await Hive.openBox(_safBoxName);
+      _grantedUri = _settingsBox?.get(_uriKey);
+      
+      debugPrint('SAF: Initialized');
+      debugPrint('SAF: Box opened: ${_settingsBox != null}');
+      debugPrint('SAF: Stored URI exists: ${_grantedUri != null && _grantedUri!.isNotEmpty}');
+      if (_grantedUri != null) {
+        debugPrint('SAF: URI value: $_grantedUri');
+      }
+    } catch (e) {
+      debugPrint('SAF: Initialize error: $e');
+    }
   }
 
   /// Request user to pick WhatsApp status folder
@@ -47,8 +53,17 @@ class SafService {
       
       if (directory != null) {
         _grantedUri = directory.uri;
+        
+        // Save to box with explicit flush
         await _settingsBox?.put(_uriKey, _grantedUri);
-        debugPrint('SAF: Folder access granted: $_grantedUri');
+        await _settingsBox?.flush();
+        
+        debugPrint('SAF: Folder access granted and saved: $_grantedUri');
+        
+        // Verify it was saved
+        final savedUri = _settingsBox?.get(_uriKey);
+        debugPrint('SAF: Verification - saved URI: $savedUri');
+        
         return true;
       }
       debugPrint('SAF: Folder picker cancelled');
@@ -62,7 +77,7 @@ class SafService {
   /// List files from the granted folder
   Future<List<SafDocumentFile>> listStatusFiles() async {
     if (!hasAccess) {
-      debugPrint('SAF: No access');
+      debugPrint('SAF: No access - grantedUri is null or empty');
       return [];
     }
     
@@ -84,6 +99,7 @@ class SafService {
       return filtered;
     } catch (e) {
       debugPrint('SAF: List error: $e');
+      // If listing fails, don't clear the URI - it might be a temporary error
       return [];
     }
   }
@@ -125,59 +141,52 @@ class SafService {
       final success = await _copyContentUriToFile(file.uri, cachedPath);
       
       if (success && await cachedFile.exists()) {
-        debugPrint('SAF: Cached ${file.name}');
         return cachedPath;
       }
       
-      debugPrint('SAF: Failed to cache ${file.name}');
       return null;
     } catch (e) {
-      debugPrint('SAF: Cache error: $e');
+      debugPrint('SAF: Cache copy error for ${file.name}: $e');
       return null;
     }
   }
 
-  /// Cache a file to the 7-day cache directory
-  Future<String?> cacheToWeeklyStorage(SafDocumentFile file, String cacheDir) async {
+  /// Cache file to the weekly storage (7-day cache)
+  Future<String?> cacheToWeeklyStorage(SafDocumentFile file, String destDir) async {
     try {
-      final cachedPath = '$cacheDir/${file.name}';
+      final destPath = '$destDir/${file.name}';
       
       // Check if already exists
-      final cachedFile = File(cachedPath);
-      if (await cachedFile.exists()) {
-        return cachedPath;
+      final destFile = File(destPath);
+      if (await destFile.exists()) {
+        return destPath;
+      }
+      
+      // Create directory if needed
+      final dir = Directory(destDir);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
       }
       
       // Copy using native method
-      final success = await _copyContentUriToFile(file.uri, cachedPath);
+      final success = await _copyContentUriToFile(file.uri, destPath);
       
-      if (success && await cachedFile.exists()) {
-        return cachedPath;
+      if (success && await destFile.exists()) {
+        return destPath;
       }
+      
       return null;
     } catch (e) {
-      debugPrint('SAF: Weekly cache error: $e');
+      debugPrint('SAF: Weekly cache error for ${file.name}: $e');
       return null;
     }
   }
 
-  /// Clear the stored URI permission
+  /// Clear stored URI (for testing/reset)
   Future<void> clearAccess() async {
     _grantedUri = null;
     await _settingsBox?.delete(_uriKey);
-  }
-  
-  /// Clear cached status files
-  Future<void> clearTempCache() async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final cacheDir = Directory('${tempDir.path}/status_cache');
-      if (await cacheDir.exists()) {
-        await cacheDir.delete(recursive: true);
-        debugPrint('SAF: Temp cache cleared');
-      }
-    } catch (e) {
-      debugPrint('SAF: Clear cache error: $e');
-    }
+    await _settingsBox?.flush();
+    debugPrint('SAF: Access cleared');
   }
 }
