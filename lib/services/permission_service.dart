@@ -10,13 +10,17 @@ class PermissionService {
   PermissionService._internal();
 
   static const String _permissionBoxName = 'permission_settings';
-  static const String _storageGrantedKey = 'storage_permission_granted';
+  static const String _permissionGrantedKey = 'permission_granted_v2';
+  static const String _firstLaunchKey = 'first_launch_completed';
   
   Box? _settingsBox;
   int? _cachedSdkVersion;
 
   Future<void> initialize() async {
     _settingsBox = await Hive.openBox(_permissionBoxName);
+    debugPrint('PermissionService: Initialized');
+    debugPrint('PermissionService: Permission granted: ${_wasPermissionGranted()}');
+    debugPrint('PermissionService: First launch completed: ${_isFirstLaunchCompleted()}');
   }
 
   Future<int> _getAndroidSdkVersion() async {
@@ -30,31 +34,46 @@ class PermissionService {
 
   /// Check if permission was previously granted and stored
   bool _wasPermissionGranted() {
-    return _settingsBox?.get(_storageGrantedKey, defaultValue: false) ?? false;
+    return _settingsBox?.get(_permissionGrantedKey, defaultValue: false) ?? false;
   }
 
-  /// Store that permission was granted
+  /// Check if first launch has completed
+  bool _isFirstLaunchCompleted() {
+    return _settingsBox?.get(_firstLaunchKey, defaultValue: false) ?? false;
+  }
+
+  /// Store that permission was granted permanently
   Future<void> _markPermissionGranted() async {
-    await _settingsBox?.put(_storageGrantedKey, true);
+    await _settingsBox?.put(_permissionGrantedKey, true);
+    await _settingsBox?.put(_firstLaunchKey, true);
+    debugPrint('PermissionService: Marked permission as granted permanently');
   }
 
+  /// Check if we need to show permission dialog
+  /// Returns true if permission is granted OR was previously granted
   Future<bool> checkStoragePermission() async {
     if (!Platform.isAndroid) return true;
 
+    // If permission was previously granted and stored, return true immediately
+    // This is the key - once granted, we never ask again
+    if (_wasPermissionGranted()) {
+      debugPrint('PermissionService: Previously granted, skipping check');
+      return true;
+    }
+
     final sdkVersion = await _getAndroidSdkVersion();
     
-    // For Android 11+ using SAF, we don't need storage permission
-    // SAF access is handled separately
+    // For Android 11+ using SAF, we don't strictly need storage permission
+    // We just need to mark first launch as complete
     if (sdkVersion >= 30) {
-      // Check if we previously granted basic permission
-      if (_wasPermissionGranted()) {
-        debugPrint('Permission: Previously granted (Android 11+)');
-        return true;
-      }
-      // For Android 11+, we actually check if basic READ_EXTERNAL_STORAGE is granted
-      // or if we've marked it as granted before
       final status = await Permission.storage.status;
       if (status.isGranted) {
+        await _markPermissionGranted();
+        return true;
+      }
+      // Even if not granted, check if first launch completed
+      // (user may have triggered SAF access which is sufficient)
+      if (_isFirstLaunchCompleted()) {
         await _markPermissionGranted();
         return true;
       }
@@ -64,8 +83,9 @@ class PermissionService {
       final status = await Permission.storage.status;
       if (status.isGranted) {
         await _markPermissionGranted();
+        return true;
       }
-      return status.isGranted;
+      return false;
     }
   }
 
@@ -75,23 +95,20 @@ class PermissionService {
     final sdkVersion = await _getAndroidSdkVersion();
 
     if (sdkVersion >= 30) {
-      // Android 11+ - Request basic storage or just mark as done
-      // The actual access is via SAF
-      final status = await Permission.storage.request();
-      if (status.isGranted || status.isDenied) {
-        // Even if denied, on Android 11+ we'll use SAF
-        await _markPermissionGranted();
-        debugPrint('Permission: Marked as granted (Android 11+, using SAF)');
-        return true;
-      }
-      return false;
+      // Android 11+ - Request storage (may or may not be needed, SAF is primary)
+      await Permission.storage.request();
+      // Mark as granted regardless - SAF is the actual access method
+      await _markPermissionGranted();
+      debugPrint('PermissionService: Android 11+ permission request complete');
+      return true;
     } else {
       // Android 10 and below
       final status = await Permission.storage.request();
       if (status.isGranted) {
         await _markPermissionGranted();
+        return true;
       }
-      return status.isGranted;
+      return false;
     }
   }
 
