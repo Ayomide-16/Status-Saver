@@ -13,6 +13,7 @@ class StatusCard extends StatefulWidget {
   final bool showDelete;
   final bool showShare;
   final String? expiryText;
+  final bool isSaved;
 
   const StatusCard({
     super.key,
@@ -25,6 +26,7 @@ class StatusCard extends StatefulWidget {
     this.showDelete = false,
     this.showShare = false,
     this.expiryText,
+    this.isSaved = false,
   });
 
   @override
@@ -135,8 +137,16 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
                         child: _buildVideoIndicator(),
                       ),
                     
-                    // Cached badge
-                    if (widget.status.isCached)
+                    // Saved badge (checkmark)
+                    if (widget.isSaved || widget.status.isSaved)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: _buildSavedBadge(),
+                      ),
+                    
+                    // Cached badge (only if not saved)
+                    if (widget.status.isCached && !widget.isSaved && !widget.status.isSaved)
                       Positioned(
                         top: 8,
                         right: 8,
@@ -144,7 +154,7 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
                       ),
                     
                     // Expiry text for cached items
-                    if (widget.expiryText != null)
+                    if (widget.expiryText != null && !widget.isSaved && !widget.status.isSaved)
                       Positioned(
                         top: 8,
                         right: 8,
@@ -284,6 +294,17 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildSavedBadge() {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.9),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
+    );
+  }
+
   Widget _buildExpiryBadge() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -299,8 +320,10 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
   }
 
   Widget _buildBottomBar(bool isDark) {
+    final showSavedIndicator = widget.isSaved || widget.status.isSaved;
+    
     return Padding(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(10),
       child: Row(
         children: [
           // Time info
@@ -328,28 +351,33 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
             ),
           ),
           
-          // Action buttons
+          // Action buttons with spacing
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (widget.showSave && widget.onSave != null)
-                _buildActionButton(
-                  icon: Icons.download_rounded,
-                  color: AppColors.primaryGreen,
-                  onTap: widget.onSave!,
-                ),
-              if (widget.showShare && widget.onShare != null)
+              if (widget.showShare && widget.onShare != null) ...[
                 _buildActionButton(
                   icon: Icons.share_rounded,
                   color: Colors.blue,
                   onTap: widget.onShare!,
                 ),
-              if (widget.showDelete && widget.onDelete != null)
+                const SizedBox(width: 8),
+              ],
+              if (widget.showSave && widget.onSave != null)
+                _buildActionButton(
+                  icon: showSavedIndicator ? Icons.check_rounded : Icons.download_rounded,
+                  color: showSavedIndicator ? AppColors.success : AppColors.primaryGreen,
+                  onTap: showSavedIndicator ? () {} : widget.onSave!,
+                  enabled: !showSavedIndicator,
+                ),
+              if (widget.showDelete && widget.onDelete != null) ...[
+                const SizedBox(width: 8),
                 _buildActionButton(
                   icon: Icons.delete_outline_rounded,
                   color: AppColors.error,
                   onTap: widget.onDelete!,
                 ),
+              ],
             ],
           ),
         ],
@@ -361,19 +389,20 @@ class _StatusCardState extends State<StatusCard> with SingleTickerProviderStateM
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
+    bool enabled = true,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.9),
+            color: color.withValues(alpha: enabled ? 0.9 : 0.5),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, size: 16, color: Colors.white),
+          child: Icon(icon, size: 18, color: Colors.white),
         ),
       ),
     );

@@ -14,6 +14,9 @@ import 'screens/main_navigation.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Enable edge-to-edge mode
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  
   // Initialize Hive
   await Hive.initFlutter();
   Hive.registerAdapter(StatusItemAdapter());
@@ -41,12 +44,11 @@ class StatusSaverApp extends StatelessWidget {
               statusBarIconBrightness: themeProvider.isDarkMode 
                   ? Brightness.light 
                   : Brightness.dark,
-              systemNavigationBarColor: themeProvider.isDarkMode
-                  ? AppColors.darkSurface
-                  : AppColors.lightBackground,
+              systemNavigationBarColor: Colors.transparent,
               systemNavigationBarIconBrightness: themeProvider.isDarkMode
                   ? Brightness.light
                   : Brightness.dark,
+              systemNavigationBarContrastEnforced: false,
             ),
           );
           

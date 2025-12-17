@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
@@ -7,30 +9,62 @@ class PermissionService {
   factory PermissionService() => _instance;
   PermissionService._internal();
 
+  static const String _permissionBoxName = 'permission_settings';
+  static const String _storageGrantedKey = 'storage_permission_granted';
+  
+  Box? _settingsBox;
+  int? _cachedSdkVersion;
+
+  Future<void> initialize() async {
+    _settingsBox = await Hive.openBox(_permissionBoxName);
+  }
+
   Future<int> _getAndroidSdkVersion() async {
+    if (_cachedSdkVersion != null) return _cachedSdkVersion!;
     if (!Platform.isAndroid) return 0;
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
-    return androidInfo.version.sdkInt;
+    _cachedSdkVersion = androidInfo.version.sdkInt;
+    return _cachedSdkVersion!;
+  }
+
+  /// Check if permission was previously granted and stored
+  bool _wasPermissionGranted() {
+    return _settingsBox?.get(_storageGrantedKey, defaultValue: false) ?? false;
+  }
+
+  /// Store that permission was granted
+  Future<void> _markPermissionGranted() async {
+    await _settingsBox?.put(_storageGrantedKey, true);
   }
 
   Future<bool> checkStoragePermission() async {
     if (!Platform.isAndroid) return true;
 
     final sdkVersion = await _getAndroidSdkVersion();
-
-    if (sdkVersion >= 33) {
-      // Android 13+ - Check for media permissions
-      final photos = await Permission.photos.status;
-      final videos = await Permission.videos.status;
-      return photos.isGranted && videos.isGranted;
-    } else if (sdkVersion >= 30) {
-      // Android 11-12 - Check for manage external storage
-      final status = await Permission.manageExternalStorage.status;
-      return status.isGranted;
-    } else {
-      // Android 10 and below
+    
+    // For Android 11+ using SAF, we don't need storage permission
+    // SAF access is handled separately
+    if (sdkVersion >= 30) {
+      // Check if we previously granted basic permission
+      if (_wasPermissionGranted()) {
+        debugPrint('Permission: Previously granted (Android 11+)');
+        return true;
+      }
+      // For Android 11+, we actually check if basic READ_EXTERNAL_STORAGE is granted
+      // or if we've marked it as granted before
       final status = await Permission.storage.status;
+      if (status.isGranted) {
+        await _markPermissionGranted();
+        return true;
+      }
+      return false;
+    } else {
+      // Android 10 and below - need storage permission
+      final status = await Permission.storage.status;
+      if (status.isGranted) {
+        await _markPermissionGranted();
+      }
       return status.isGranted;
     }
   }
@@ -40,22 +74,23 @@ class PermissionService {
 
     final sdkVersion = await _getAndroidSdkVersion();
 
-    if (sdkVersion >= 33) {
-      // Android 13+ - Request media permissions
-      final statuses = await [
-        Permission.photos,
-        Permission.videos,
-      ].request();
-
-      return statuses[Permission.photos]!.isGranted &&
-          statuses[Permission.videos]!.isGranted;
-    } else if (sdkVersion >= 30) {
-      // Android 11-12 - Request manage external storage
-      final status = await Permission.manageExternalStorage.request();
-      return status.isGranted;
+    if (sdkVersion >= 30) {
+      // Android 11+ - Request basic storage or just mark as done
+      // The actual access is via SAF
+      final status = await Permission.storage.request();
+      if (status.isGranted || status.isDenied) {
+        // Even if denied, on Android 11+ we'll use SAF
+        await _markPermissionGranted();
+        debugPrint('Permission: Marked as granted (Android 11+, using SAF)');
+        return true;
+      }
+      return false;
     } else {
       // Android 10 and below
       final status = await Permission.storage.request();
+      if (status.isGranted) {
+        await _markPermissionGranted();
+      }
       return status.isGranted;
     }
   }
@@ -65,17 +100,11 @@ class PermissionService {
 
     final sdkVersion = await _getAndroidSdkVersion();
 
-    if (sdkVersion >= 33) {
-      final photos = await Permission.photos.status;
-      final videos = await Permission.videos.status;
-      return photos.isPermanentlyDenied || videos.isPermanentlyDenied;
-    } else if (sdkVersion >= 30) {
-      final status = await Permission.manageExternalStorage.status;
-      return status.isPermanentlyDenied;
-    } else {
-      final status = await Permission.storage.status;
-      return status.isPermanentlyDenied;
-    }
+    // Android 11+ doesn't need storage permission (uses SAF)
+    if (sdkVersion >= 30) return false;
+
+    final status = await Permission.storage.status;
+    return status.isPermanentlyDenied;
   }
 
   Future<void> openSettings() async {
@@ -83,15 +112,6 @@ class PermissionService {
   }
 
   Future<PermissionStatus> getStoragePermissionStatus() async {
-    final sdkVersion = await _getAndroidSdkVersion();
-
-    if (sdkVersion >= 33) {
-      final photos = await Permission.photos.status;
-      return photos;
-    } else if (sdkVersion >= 30) {
-      return await Permission.manageExternalStorage.status;
-    } else {
-      return await Permission.storage.status;
-    }
+    return await Permission.storage.status;
   }
 }

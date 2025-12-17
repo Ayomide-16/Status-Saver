@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import '../config/constants.dart';
 import '../models/cache_metadata.dart';
 import '../models/status_item.dart';
@@ -50,6 +51,25 @@ class CacheService {
     }
   }
 
+  /// Generate thumbnail for a video file
+  Future<String?> _generateThumbnail(String videoPath) async {
+    if (_thumbnailsDir == null) return null;
+
+    try {
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: _thumbnailsDir!.path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: AppConstants.thumbnailWidth,
+        quality: AppConstants.thumbnailQuality,
+      );
+      return thumbnailPath;
+    } catch (e) {
+      debugPrint('Cache: Error generating thumbnail: $e');
+      return null;
+    }
+  }
+
   /// Cache a status from a local path (used for auto-caching live statuses)
   Future<void> cacheStatusFromPath({
     required String localPath,
@@ -62,7 +82,6 @@ class CacheService {
 
     // Check if already cached by filename (prevent duplicates)
     if (isAlreadyCached(fileName)) {
-      debugPrint('Cache: $fileName already cached, skipping');
       return;
     }
 
@@ -72,12 +91,17 @@ class CacheService {
       final sourceFile = File(localPath);
       
       if (!await sourceFile.exists()) {
-        debugPrint('Cache: Source file does not exist: $localPath');
         return;
       }
       
       // Copy to cache
       await sourceFile.copy(cachedPath);
+
+      // Generate thumbnail for videos if not provided
+      String? finalThumbnailPath = thumbnailPath;
+      if (isVideo && finalThumbnailPath == null) {
+        finalThumbnailPath = await _generateThumbnail(cachedPath);
+      }
 
       // Store metadata
       final metadata = CacheMetadata.create(
@@ -87,11 +111,11 @@ class CacheService {
         fileSize: fileSize,
         fileName: fileName,
         cacheDurationDays: AppConstants.cacheDurationDays,
-        thumbnailPath: thumbnailPath,
+        thumbnailPath: finalThumbnailPath,
       );
 
       await _cacheBox.put(fileName, metadata);
-      debugPrint('Cache: Cached $fileName successfully');
+      debugPrint('Cache: Cached $fileName (thumbnail: ${finalThumbnailPath != null})');
     } catch (e) {
       debugPrint('Cache: Error caching $fileName: $e');
     }
@@ -104,7 +128,7 @@ class CacheService {
       fileName: status.name,
       isVideo: status.isVideo,
       fileSize: status.size,
-      thumbnailPath: thumbnailPath,
+      thumbnailPath: thumbnailPath ?? status.thumbnailPath,
     );
   }
 
@@ -115,13 +139,24 @@ class CacheService {
       if (!metadata.isExpired) {
         final cachedFile = File(metadata.cachedPath);
         if (await cachedFile.exists()) {
+          // Generate thumbnail if video and missing
+          String? thumbnailPath = metadata.thumbnailPath;
+          if (metadata.isVideo && (thumbnailPath == null || !File(thumbnailPath).existsSync())) {
+            thumbnailPath = await _generateThumbnail(metadata.cachedPath);
+            // Update metadata with new thumbnail
+            if (thumbnailPath != null) {
+              metadata.thumbnailPath = thumbnailPath;
+              await metadata.save();
+            }
+          }
+
           final statusItem = StatusItem(
             path: metadata.cachedPath,
             name: metadata.fileName,
             isVideo: metadata.isVideo,
             timestamp: metadata.cachedAt,
             size: metadata.fileSize,
-            thumbnailPath: metadata.thumbnailPath,
+            thumbnailPath: thumbnailPath,
             originalPath: metadata.originalPath,
             isCached: true,
           );

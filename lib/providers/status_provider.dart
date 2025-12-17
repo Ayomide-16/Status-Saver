@@ -50,6 +50,9 @@ class StatusProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Initialize permission service first to load stored state
+      await _permissionService.initialize();
+      
       // Check permissions
       _hasPermission = await _permissionService.checkStoragePermission();
 
