@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:io';
 
 import 'config/theme.dart';
 import 'models/status_item.dart';
@@ -10,6 +11,7 @@ import 'providers/status_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/main_navigation.dart';
+import 'services/background_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +23,11 @@ void main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(StatusItemAdapter());
   Hive.registerAdapter(CacheMetadataAdapter());
+  
+  // Initialize background caching service (Android only)
+  if (Platform.isAndroid) {
+    await initializeBackgroundService();
+  }
   
   runApp(const StatusSaverApp());
 }
