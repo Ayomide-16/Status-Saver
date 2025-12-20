@@ -22,23 +22,49 @@ class SafService {
   Box? _settingsBox;
   String? _grantedUri;
   final _safUtil = SafUtil();
+  bool _isInitialized = false;
   
   bool get hasAccess => _grantedUri != null && _grantedUri!.isNotEmpty;
   String? get grantedUri => _grantedUri;
 
   Future<void> initialize() async {
+    if (_isInitialized) {
+      debugPrint('SAF: Already initialized, hasAccess: $hasAccess');
+      return;
+    }
+    
     try {
-      _settingsBox = await Hive.openBox(_safBoxName);
-      _grantedUri = _settingsBox?.get(_uriKey);
+      debugPrint('SAF: ===== INITIALIZING =====');
       
-      debugPrint('SAF: Initialized');
-      debugPrint('SAF: Box opened: ${_settingsBox != null}');
-      debugPrint('SAF: Stored URI exists: ${_grantedUri != null && _grantedUri!.isNotEmpty}');
-      if (_grantedUri != null) {
-        debugPrint('SAF: URI value: $_grantedUri');
+      // Open Hive box
+      _settingsBox = await Hive.openBox(_safBoxName);
+      debugPrint('SAF: Hive box opened: ${_settingsBox?.name}');
+      debugPrint('SAF: Box keys: ${_settingsBox?.keys.toList()}');
+      
+      // Get stored URI
+      _grantedUri = _settingsBox?.get(_uriKey);
+      debugPrint('SAF: Retrieved URI from box: $_grantedUri');
+      
+      // If we have a stored URI, verify it's still valid by checking persisted permissions
+      if (_grantedUri != null && _grantedUri!.isNotEmpty) {
+        debugPrint('SAF: Checking if persisted permission is still valid...');
+        try {
+          // Try to list - if it fails, the permission was revoked
+          final testList = await _safUtil.list(_grantedUri!);
+          debugPrint('SAF: Permission valid - found ${testList.length} files');
+        } catch (e) {
+          debugPrint('SAF: Permission check failed: $e');
+          // Don't clear URI on error - let the user try again
+        }
+      } else {
+        debugPrint('SAF: No stored URI found');
       }
-    } catch (e) {
+      
+      _isInitialized = true;
+      debugPrint('SAF: ===== INIT COMPLETE - hasAccess: $hasAccess =====');
+    } catch (e, stack) {
       debugPrint('SAF: Initialize error: $e');
+      debugPrint('SAF: Stack: $stack');
     }
   }
 
@@ -47,29 +73,38 @@ class SafService {
     try {
       debugPrint('SAF: Opening folder picker...');
       
+      // saf_util handles persisted permissions automatically
       final directory = await _safUtil.pickDirectory(
         writePermission: false,
       );
       
       if (directory != null) {
         _grantedUri = directory.uri;
+        debugPrint('SAF: Directory picked: $_grantedUri');
+        
+        // Ensure box is open
+        if (_settingsBox == null || !_settingsBox!.isOpen) {
+          _settingsBox = await Hive.openBox(_safBoxName);
+        }
         
         // Save to box with explicit flush
         await _settingsBox?.put(_uriKey, _grantedUri);
         await _settingsBox?.flush();
         
-        debugPrint('SAF: Folder access granted and saved: $_grantedUri');
+        debugPrint('SAF: URI saved to Hive');
         
         // Verify it was saved
         final savedUri = _settingsBox?.get(_uriKey);
         debugPrint('SAF: Verification - saved URI: $savedUri');
+        debugPrint('SAF: Match: ${savedUri == _grantedUri}');
         
         return true;
       }
       debugPrint('SAF: Folder picker cancelled');
       return false;
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('SAF: Folder access error: $e');
+      debugPrint('SAF: Stack: $stack');
       return false;
     }
   }
@@ -77,7 +112,7 @@ class SafService {
   /// List files from the granted folder
   Future<List<SafDocumentFile>> listStatusFiles() async {
     if (!hasAccess) {
-      debugPrint('SAF: No access - grantedUri is null or empty');
+      debugPrint('SAF: listStatusFiles - No access (URI: $_grantedUri)');
       return [];
     }
     
@@ -99,7 +134,6 @@ class SafService {
       return filtered;
     } catch (e) {
       debugPrint('SAF: List error: $e');
-      // If listing fails, don't clear the URI - it might be a temporary error
       return [];
     }
   }
