@@ -4,7 +4,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
-import 'package:saf_util/saf_util.dart'; // Import SAF Util
+
 import 'package:saf_util/saf_util_platform_interface.dart';
 import '../config/constants.dart';
 import '../models/cache_metadata.dart';
@@ -235,7 +235,7 @@ Future<bool> _backgroundCacheStatuses(SafService safService) async {
         if (file is File) {
           size = (await file.stat()).size;
         } else if (file is SafDocumentFile) {
-          size = file.length ?? 0;
+          size = file.length;
         }
         
         final metadata = CacheMetadata.create(

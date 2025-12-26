@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
+
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:saf_util/saf_util.dart';
 import 'package:saf_util/saf_util_platform_interface.dart';
@@ -136,7 +136,7 @@ class SafService {
   Future<bool> _copyContentUriToFile(String uri, String destPath) async {
     try {
       // Use uri_to_file to get a temporary File object from content URI
-      File tempFile = await toFile(uri);
+      final tempFile = await toFile(uri);
       
       // Now copy this temp file to our destination
       await tempFile.copy(destPath);
