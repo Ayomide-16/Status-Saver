@@ -4,8 +4,11 @@ import 'package:workmanager/workmanager.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:saf_util/saf_util.dart'; // Import SAF Util
+import 'package:saf_util/saf_util_platform_interface.dart';
 import '../config/constants.dart';
 import '../models/cache_metadata.dart';
+import 'saf_service.dart'; // Import SafService
 
 /// Background task names
 const String backgroundCacheTask = 'com.statussaver.cache_statuses';
@@ -68,8 +71,12 @@ void callbackDispatcher() {
         Hive.registerAdapter(CacheMetadataAdapter());
       }
       
+      // Initialize SAF Service in background isolate
+      final safService = SafService();
+      await safService.initialize();
+      
       // Run the caching logic
-      final result = await _backgroundCacheStatuses();
+      final result = await _backgroundCacheStatuses(safService);
       
       debugPrint('Background: ========= TASK COMPLETED: $result =========');
       return result;
@@ -83,7 +90,7 @@ void callbackDispatcher() {
 }
 
 /// Cache WhatsApp statuses in background
-Future<bool> _backgroundCacheStatuses() async {
+Future<bool> _backgroundCacheStatuses(SafService safService) async {
   debugPrint('Background: Starting status caching...');
   
   Box<CacheMetadata>? cacheBox;
@@ -110,98 +117,142 @@ Future<bool> _backgroundCacheStatuses() async {
       await thumbnailsDir.create(recursive: true);
     }
     
-    // Find WhatsApp status directory - try multiple paths
+    // ---------------------------------------------------------
+    // STRATEGY: Try Standard Folders First, Then SAF
+    // ---------------------------------------------------------
+    
+    // 1. Try Standard WhatsApp Folders
     Directory? statusDir;
+    bool usingSaf = false;
+    
     for (final path in AppConstants.whatsAppStatusPaths) {
       final dir = Directory(path);
       if (await dir.exists()) {
-        statusDir = dir;
-        debugPrint('Background: Found status directory: $path');
-        break;
+        try {
+          if (await dir.list().isEmpty) continue; // Skip empty dirs
+          statusDir = dir;
+          debugPrint('Background: Found standard status directory: $path');
+          break;
+        } catch (_) {}
       }
     }
     
-    // Also check the SAF temp cache directory as fallback
-    if (statusDir == null) {
-      final tempDir = await getTemporaryDirectory();
-      final safCacheDir = Directory('${tempDir.path}/status_cache');
-      if (await safCacheDir.exists()) {
-        statusDir = safCacheDir;
-        debugPrint('Background: Using SAF cache as source: ${safCacheDir.path}');
-      }
-    }
+    // 2. If no standard folder, try SAF
+    List<dynamic> filesToProcess = [];
     
-    if (statusDir == null) {
-      debugPrint('Background: ERROR - No status directory found');
+    if (statusDir != null) {
+      // Standard Access
+      try {
+        filesToProcess = await statusDir.list().toList();
+      } catch (e) {
+        debugPrint('Background: Error listing standard dir: $e');
+      }
+    } else if (safService.hasAccess) {
+      // SAF Access
+      debugPrint('Background: Standard folders not found, trying SAF...');
+      usingSaf = true;
+      try {
+        filesToProcess = await safService.listStatusFiles();
+        debugPrint('Background: Found ${filesToProcess.length} files via SAF');
+      } catch (e) {
+        debugPrint('Background: Error listing SAF files: $e');
+      }
+    } else {
+      debugPrint('Background: ERROR - No status directory found (Standard or SAF)');
       return false;
     }
+    
+    debugPrint('Background: Found ${filesToProcess.length} files to process (Using SAF: $usingSaf)');
     
     int cachedCount = 0;
     int skippedCount = 0;
     int errorCount = 0;
     
-    final files = await statusDir.list().toList();
-    debugPrint('Background: Found ${files.length} files to process');
-    
-    for (final file in files) {
+    for (final file in filesToProcess) {
+      String fileName;
+      bool isVideo;
+      
+      // Handle File (Standard) vs SafDocumentFile (SAF)
       if (file is File) {
-        final fileName = file.path.split(Platform.pathSeparator).last;
-        final extension = fileName.split('.').last.toLowerCase();
-        final isImage = AppConstants.imageExtensions.contains('.$extension');
-        final isVideo = AppConstants.videoExtensions.contains('.$extension');
+        fileName = file.path.split(Platform.pathSeparator).last;
+      } else if (file is SafDocumentFile) {
+        fileName = file.name;
+      } else {
+        continue;
+      }
+      
+      final extension = fileName.split('.').last.toLowerCase();
+      final isImage = AppConstants.imageExtensions.contains('.$extension');
+      isVideo = AppConstants.videoExtensions.contains('.$extension');
+      
+      if (!isImage && !isVideo) continue;
+      
+      // Check if already cached (by filename)
+      final existingEntries = cacheBox.values.where((m) => m.fileName == fileName && !m.isExpired);
+      if (existingEntries.isNotEmpty) {
+        skippedCount++;
+        continue;
+      }
+      
+      try {
+        // Copy to cache
+        final cachedPath = '${cacheDir.path}/$fileName';
+        final destFile = File(cachedPath);
         
-        if (!isImage && !isVideo) continue;
-        
-        // Check if already cached (by filename)
-        final existingEntries = cacheBox.values.where((m) => m.fileName == fileName && !m.isExpired);
-        if (existingEntries.isNotEmpty) {
-          skippedCount++;
-          continue;
+        // Skip if file already exists physically
+        if (await destFile.exists()) {
+             // Maybe update metadata if missing, but for now skip
+             // We do this to avoid re-copying large videos
+        } else {
+          if (usingSaf && file is SafDocumentFile) {
+            // Use SAF Service to copy
+            final path = await safService.cacheToWeeklyStorage(file, cacheDir.path);
+            if (path == null) throw Exception('SAF Copy failed');
+          } else if (file is File) {
+             // Standard copy
+             await file.copy(cachedPath);
+          }
         }
         
-        try {
-          // Copy to cache
-          final cachedPath = '${cacheDir.path}/$fileName';
-          final destFile = File(cachedPath);
-          
-          if (!await destFile.exists()) {
-            await file.copy(cachedPath);
+        // Generate thumbnail for videos
+        String? thumbnailPath;
+        if (isVideo) {
+          try {
+            thumbnailPath = await VideoThumbnail.thumbnailFile(
+              video: cachedPath,
+              thumbnailPath: thumbnailsDir.path,
+              imageFormat: ImageFormat.JPEG,
+              maxWidth: AppConstants.thumbnailWidth,
+              quality: AppConstants.thumbnailQuality,
+            );
+          } catch (e) {
+            debugPrint('Background: Thumbnail failed for $fileName');
           }
-          
-          // Generate thumbnail for videos
-          String? thumbnailPath;
-          if (isVideo) {
-            try {
-              thumbnailPath = await VideoThumbnail.thumbnailFile(
-                video: cachedPath,
-                thumbnailPath: thumbnailsDir.path,
-                imageFormat: ImageFormat.JPEG,
-                maxWidth: AppConstants.thumbnailWidth,
-                quality: AppConstants.thumbnailQuality,
-              );
-            } catch (e) {
-              debugPrint('Background: Thumbnail failed for $fileName');
-            }
-          }
-          
-          // Save metadata
-          final stat = await file.stat();
-          final metadata = CacheMetadata.create(
-            originalPath: file.path,
-            cachedPath: cachedPath,
-            isVideo: isVideo,
-            fileSize: stat.size,
-            fileName: fileName,
-            cacheDurationDays: AppConstants.cacheDurationDays,
-            thumbnailPath: thumbnailPath,
-          );
-          
-          await cacheBox.put(fileName, metadata);
-          cachedCount++;
-        } catch (e) {
-          debugPrint('Background: Error caching $fileName: $e');
-          errorCount++;
         }
+        
+        // Save metadata
+        int size = 0;
+        if (file is File) {
+          size = (await file.stat()).size;
+        } else if (file is SafDocumentFile) {
+          size = file.length ?? 0;
+        }
+        
+        final metadata = CacheMetadata.create(
+          originalPath: usingSaf ? (file as SafDocumentFile).uri : (file as File).path,
+          cachedPath: cachedPath,
+          isVideo: isVideo,
+          fileSize: size,
+          fileName: fileName,
+          cacheDurationDays: AppConstants.cacheDurationDays,
+          thumbnailPath: thumbnailPath,
+        );
+        
+        await cacheBox.put(fileName, metadata);
+        cachedCount++;
+      } catch (e) {
+        debugPrint('Background: Error caching $fileName: $e');
+        errorCount++;
       }
     }
     

@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:saf_util/saf_util.dart';
 import 'package:saf_util/saf_util_platform_interface.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uri_to_file/uri_to_file.dart';
 import '../config/constants.dart';
 
 /// Service to handle Storage Access Framework for Android 11+
@@ -15,9 +16,6 @@ class SafService {
 
   static const String _safBoxName = 'saf_settings';
   static const String _uriKey = 'whatsapp_status_uri';
-  
-  // Platform channel for native file operations
-  static const MethodChannel _channel = MethodChannel('status_saver/saf');
   
   Box? _settingsBox;
   String? _grantedUri;
@@ -39,7 +37,6 @@ class SafService {
       // Open Hive box
       _settingsBox = await Hive.openBox(_safBoxName);
       debugPrint('SAF: Hive box opened: ${_settingsBox?.name}');
-      debugPrint('SAF: Box keys: ${_settingsBox?.keys.toList()}');
       
       // Get stored URI
       _grantedUri = _settingsBox?.get(_uriKey);
@@ -54,7 +51,6 @@ class SafService {
           debugPrint('SAF: Permission valid - found ${testList.length} files');
         } catch (e) {
           debugPrint('SAF: Permission check failed: $e');
-          // Don't clear URI on error - let the user try again
         }
       } else {
         debugPrint('SAF: No stored URI found');
@@ -96,7 +92,6 @@ class SafService {
         // Verify it was saved
         final savedUri = _settingsBox?.get(_uriKey);
         debugPrint('SAF: Verification - saved URI: $savedUri');
-        debugPrint('SAF: Match: ${savedUri == _grantedUri}');
         
         return true;
       }
@@ -119,7 +114,6 @@ class SafService {
     try {
       debugPrint('SAF: Listing files from $_grantedUri');
       final files = await _safUtil.list(_grantedUri!);
-      debugPrint('SAF: Total files found: ${files.length}');
       
       // Filter to only images and videos
       final filtered = files.where((file) {
@@ -138,16 +132,22 @@ class SafService {
     }
   }
 
-  /// Copy a content:// URI file to local storage using native Android code
+  /// Copy a content:// URI file to local storage using uri_to_file
   Future<bool> _copyContentUriToFile(String uri, String destPath) async {
     try {
-      final result = await _channel.invokeMethod<bool>('copyContentUriToFile', {
-        'uri': uri,
-        'destPath': destPath,
-      });
-      return result ?? false;
+      // Use uri_to_file to get a temporary File object from content URI
+      File tempFile = await toFile(uri);
+      
+      // Now copy this temp file to our destination
+      await tempFile.copy(destPath);
+      
+      // Check if success
+      if (await File(destPath).exists()) {
+        return true;
+      }
+      return false;
     } catch (e) {
-      debugPrint('SAF: Native copy error: $e');
+      debugPrint('SAF: Copy error using uri_to_file: $e');
       return false;
     }
   }
@@ -171,7 +171,7 @@ class SafService {
         await dir.create(recursive: true);
       }
       
-      // Use native Android method to copy content:// URI to local file
+      // Copy using uri_to_file logic
       final success = await _copyContentUriToFile(file.uri, cachedPath);
       
       if (success && await cachedFile.exists()) {
@@ -202,7 +202,7 @@ class SafService {
         await dir.create(recursive: true);
       }
       
-      // Copy using native method
+      // Copy using uri_to_file logic
       final success = await _copyContentUriToFile(file.uri, destPath);
       
       if (success && await destFile.exists()) {
