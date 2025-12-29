@@ -5,7 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:saf_util/saf_util.dart';
 import 'package:saf_util/saf_util_platform_interface.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:uri_to_file/uri_to_file.dart';
+import 'package:native_support_plugin/native_support.dart';
 import '../config/constants.dart';
 
 /// Service to handle Storage Access Framework for Android 11+
@@ -132,22 +132,13 @@ class SafService {
     }
   }
 
-  /// Copy a content:// URI file to local storage using uri_to_file
+  /// Copy a content:// URI file to local storage using native_support
   Future<bool> _copyContentUriToFile(String uri, String destPath) async {
     try {
-      // Use uri_to_file to get a temporary File object from content URI
-      final tempFile = await toFile(uri);
-      
-      // Now copy this temp file to our destination
-      await tempFile.copy(destPath);
-      
-      // Check if success
-      if (await File(destPath).exists()) {
-        return true;
-      }
-      return false;
+      // Use native_support to copy file content directly
+      return await NativeSupport.copyContentUriToFile(uri, destPath);
     } catch (e) {
-      debugPrint('SAF: Copy error using uri_to_file: $e');
+      debugPrint('SAF: Copy error using native_support: $e');
       return false;
     }
   }
