@@ -69,6 +69,10 @@ dependencies {
     
     // DocumentFile for SAF
     implementation("androidx.documentfile:documentfile:1.0.1")
+    
+    // Fragment and ViewPager2
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

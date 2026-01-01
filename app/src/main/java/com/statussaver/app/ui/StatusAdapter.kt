@@ -10,14 +10,37 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.decode.VideoFrameDecoder
 import com.statussaver.app.R
-import com.statussaver.app.data.database.BackedUpStatus
 import com.statussaver.app.data.database.FileType
+import com.statussaver.app.data.database.StatusSource
 import java.io.File
 
 class StatusAdapter(
-    private val onItemClick: (BackedUpStatus) -> Unit,
-    private val onItemLongClick: (BackedUpStatus) -> Boolean
-) : ListAdapter<BackedUpStatus, StatusAdapter.StatusViewHolder>(StatusDiffCallback()) {
+    private val onItemClick: (StatusItem) -> Unit,
+    private val onDownloadClick: (StatusItem) -> Unit
+) : ListAdapter<StatusAdapter.StatusItem, StatusAdapter.StatusViewHolder>(StatusDiffCallback()) {
+
+    private var downloadedFilenames: Set<String> = emptySet()
+    
+    data class StatusItem(
+        val id: Long,
+        val filename: String,
+        val path: String,
+        val uri: String,
+        val fileType: FileType,
+        val source: StatusSource,
+        var isDownloaded: Boolean = false
+    )
+    
+    fun updateDownloadedState(filenames: Set<String>) {
+        downloadedFilenames = filenames
+        // Refresh items to update download state
+        currentList.forEachIndexed { index, item ->
+            val newState = filenames.contains(item.filename)
+            if (item.isDownloaded != newState) {
+                notifyItemChanged(index)
+            }
+        }
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StatusViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -26,18 +49,64 @@ class StatusAdapter(
     }
 
     override fun onBindViewHolder(holder: StatusViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        val item = getItem(position)
+        // Update download state from latest downloaded filenames
+        val updatedItem = item.copy(isDownloaded = downloadedFilenames.contains(item.filename) || item.source == StatusSource.SAVED)
+        holder.bind(updatedItem)
     }
 
     inner class StatusViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val imageView: ImageView = itemView.findViewById(R.id.statusImage)
         private val videoIndicator: ImageView = itemView.findViewById(R.id.videoIndicator)
+        private val btnDownload: ImageView = itemView.findViewById(R.id.btnDownload)
+        private val checkMark: ImageView = itemView.findViewById(R.id.checkMark)
 
-        fun bind(status: BackedUpStatus) {
-            val file = File(status.backupPath)
+        fun bind(item: StatusItem) {
+            // Load thumbnail
+            when (item.source) {
+                StatusSource.LIVE -> loadFromUri(item)
+                else -> loadFromFile(item)
+            }
             
-            if (status.fileType == FileType.VIDEO) {
-                videoIndicator.visibility = View.VISIBLE
+            // Show video indicator for videos
+            videoIndicator.visibility = if (item.fileType == FileType.VIDEO) View.VISIBLE else View.GONE
+            
+            // Show download button or checkmark
+            if (item.isDownloaded || item.source == StatusSource.SAVED) {
+                btnDownload.visibility = View.GONE
+                checkMark.visibility = View.VISIBLE
+            } else {
+                btnDownload.visibility = View.VISIBLE
+                checkMark.visibility = View.GONE
+                btnDownload.setOnClickListener { onDownloadClick(item) }
+            }
+            
+            itemView.setOnClickListener { onItemClick(item) }
+        }
+        
+        private fun loadFromUri(item: StatusItem) {
+            val uri = android.net.Uri.parse(item.uri)
+            if (item.fileType == FileType.VIDEO) {
+                imageView.load(uri) {
+                    crossfade(true)
+                    placeholder(R.drawable.placeholder)
+                    error(R.drawable.placeholder)
+                    decoderFactory { result, options, _ ->
+                        VideoFrameDecoder(result.source, options)
+                    }
+                }
+            } else {
+                imageView.load(uri) {
+                    crossfade(true)
+                    placeholder(R.drawable.placeholder)
+                    error(R.drawable.placeholder)
+                }
+            }
+        }
+        
+        private fun loadFromFile(item: StatusItem) {
+            val file = File(item.path)
+            if (item.fileType == FileType.VIDEO) {
                 imageView.load(file) {
                     crossfade(true)
                     placeholder(R.drawable.placeholder)
@@ -47,25 +116,21 @@ class StatusAdapter(
                     }
                 }
             } else {
-                videoIndicator.visibility = View.GONE
                 imageView.load(file) {
                     crossfade(true)
                     placeholder(R.drawable.placeholder)
                     error(R.drawable.placeholder)
                 }
             }
-
-            itemView.setOnClickListener { onItemClick(status) }
-            itemView.setOnLongClickListener { onItemLongClick(status) }
         }
     }
 
-    class StatusDiffCallback : DiffUtil.ItemCallback<BackedUpStatus>() {
-        override fun areItemsTheSame(oldItem: BackedUpStatus, newItem: BackedUpStatus): Boolean {
-            return oldItem.id == newItem.id
+    class StatusDiffCallback : DiffUtil.ItemCallback<StatusItem>() {
+        override fun areItemsTheSame(oldItem: StatusItem, newItem: StatusItem): Boolean {
+            return oldItem.filename == newItem.filename && oldItem.source == newItem.source
         }
 
-        override fun areContentsTheSame(oldItem: BackedUpStatus, newItem: BackedUpStatus): Boolean {
+        override fun areContentsTheSame(oldItem: StatusItem, newItem: StatusItem): Boolean {
             return oldItem == newItem
         }
     }

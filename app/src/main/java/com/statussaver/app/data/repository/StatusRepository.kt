@@ -5,9 +5,7 @@ import android.os.Environment
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.LiveData
-import com.statussaver.app.data.database.AppDatabase
-import com.statussaver.app.data.database.BackedUpStatus
-import com.statussaver.app.data.database.FileType
+import com.statussaver.app.data.database.*
 import com.statussaver.app.util.Constants
 import com.statussaver.app.util.SAFHelper
 import kotlinx.coroutines.Dispatchers
@@ -24,49 +22,86 @@ class StatusRepository(private val context: Context) {
         private const val TAG = "StatusRepository"
     }
     
-    /**
-     * Get all backed up statuses as LiveData
-     */
-    fun getAllBackups(): LiveData<List<BackedUpStatus>> = statusDao.getAllBackups()
+    // ========== Directory Management ==========
     
-    /**
-     * Get the backup directory
-     */
-    fun getBackupDirectory(): File {
-        val dir = File(
-            context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
-            Constants.BACKUP_FOLDER_NAME
-        )
-        if (!dir.exists()) {
-            dir.mkdirs()
-        }
+    fun getCacheDirectory(): File {
+        val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), Constants.CACHE_FOLDER_NAME)
+        if (!dir.exists()) dir.mkdirs()
         return dir
     }
     
-    /**
-     * Check if a file has already been backed up
-     */
-    suspend fun isAlreadyBackedUp(filename: String): Boolean {
-        return statusDao.existsByFilename(filename)
+    fun getSavedDirectory(): File {
+        val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), Constants.SAVED_FOLDER_NAME)
+        if (!dir.exists()) dir.mkdirs()
+        return dir
     }
     
-    /**
-     * Backup a status file from SAF to local storage
-     */
-    suspend fun backupFile(documentFile: DocumentFile): BackedUpStatus? = withContext(Dispatchers.IO) {
+    // ========== Live Status (from WhatsApp folder) ==========
+    
+    data class StatusFile(
+        val filename: String,
+        val uri: String,
+        val path: String,
+        val fileType: FileType,
+        val size: Long,
+        val lastModified: Long,
+        val isDownloaded: Boolean = false
+    )
+    
+    suspend fun getLiveStatuses(fileType: FileType? = null): List<StatusFile> = withContext(Dispatchers.IO) {
+        try {
+            val statusFiles = SAFHelper.listStatusFiles(context)
+            val downloadedFilenames = statusDao.getAllDownloadedFilenames().toSet()
+            
+            statusFiles
+                .filter { file ->
+                    val name = file.name ?: return@filter false
+                    val type = if (SAFHelper.isVideoFile(name)) FileType.VIDEO else FileType.IMAGE
+                    fileType == null || type == fileType
+                }
+                .map { file ->
+                    val name = file.name ?: ""
+                    StatusFile(
+                        filename = name,
+                        uri = file.uri.toString(),
+                        path = file.uri.toString(),
+                        fileType = if (SAFHelper.isVideoFile(name)) FileType.VIDEO else FileType.IMAGE,
+                        size = file.length(),
+                        lastModified = file.lastModified(),
+                        isDownloaded = downloadedFilenames.contains(name)
+                    )
+                }
+                .sortedByDescending { it.lastModified }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting live statuses: ${e.message}")
+            emptyList()
+        }
+    }
+    
+    // ========== Cached Status ==========
+    
+    fun getCachedStatuses(): LiveData<List<StatusEntity>> {
+        return statusDao.getStatusesBySource(StatusSource.CACHED)
+    }
+    
+    fun getCachedStatusesByType(fileType: FileType): LiveData<List<StatusEntity>> {
+        return statusDao.getStatusesBySourceAndType(StatusSource.CACHED, fileType)
+    }
+    
+    suspend fun cacheStatus(documentFile: DocumentFile): StatusEntity? = withContext(Dispatchers.IO) {
         try {
             val filename = documentFile.name ?: return@withContext null
             
-            // Check if already backed up
-            if (isAlreadyBackedUp(filename)) {
-                Log.d(TAG, "File already backed up: $filename")
+            // Check if already cached
+            if (statusDao.existsByFilenameAndSource(filename, StatusSource.CACHED)) {
+                Log.d(TAG, "Already cached: $filename")
                 return@withContext null
             }
             
-            val backupDir = getBackupDirectory()
-            val destFile = File(backupDir, filename)
+            val cacheDir = getCacheDirectory()
+            val destFile = File(cacheDir, filename)
             
-            // Copy file content
+            // Copy file
             context.contentResolver.openInputStream(documentFile.uri)?.use { input ->
                 FileOutputStream(destFile).use { output ->
                     input.copyTo(output)
@@ -74,87 +109,195 @@ class StatusRepository(private val context: Context) {
             }
             
             if (!destFile.exists()) {
-                Log.e(TAG, "Failed to copy file: $filename")
+                Log.e(TAG, "Failed to cache: $filename")
                 return@withContext null
             }
             
-            // Determine file type
             val fileType = if (SAFHelper.isVideoFile(filename)) FileType.VIDEO else FileType.IMAGE
             
-            // Create database entry
-            val status = BackedUpStatus(
+            val status = StatusEntity(
                 filename = filename,
                 originalUri = documentFile.uri.toString(),
-                backupPath = destFile.absolutePath,
+                localPath = destFile.absolutePath,
                 fileType = fileType,
-                backupTimestamp = System.currentTimeMillis(),
+                source = StatusSource.CACHED,
+                createdAt = documentFile.lastModified(),
                 fileSize = destFile.length()
             )
             
-            val id = statusDao.insert(status)
-            Log.d(TAG, "Backed up file: $filename (id: $id)")
+            val id = statusDao.insertStatus(status)
+            Log.d(TAG, "Cached: $filename (id: $id)")
             
             return@withContext status.copy(id = id)
         } catch (e: Exception) {
-            Log.e(TAG, "Error backing up file: ${e.message}")
+            Log.e(TAG, "Error caching status: ${e.message}")
             return@withContext null
         }
     }
     
+    // ========== Saved Status ==========
+    
+    fun getSavedStatuses(): LiveData<List<StatusEntity>> {
+        return statusDao.getStatusesBySource(StatusSource.SAVED)
+    }
+    
+    fun getSavedStatusesByType(fileType: FileType): LiveData<List<StatusEntity>> {
+        return statusDao.getStatusesBySourceAndType(StatusSource.SAVED, fileType)
+    }
+    
     /**
-     * Delete a backed up status
+     * Save a live status (from SAF) to permanent storage
      */
-    suspend fun deleteBackup(status: BackedUpStatus): Boolean = withContext(Dispatchers.IO) {
+    suspend fun saveStatus(filename: String, sourceUri: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            // Delete the file
-            val file = File(status.backupPath)
-            if (file.exists()) {
-                file.delete()
+            val savedDir = getSavedDirectory()
+            val destFile = File(savedDir, filename)
+            
+            // Copy from URI
+            val uri = android.net.Uri.parse(sourceUri)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
             }
             
-            // Delete from database
-            statusDao.delete(status)
-            Log.d(TAG, "Deleted backup: ${status.filename}")
+            if (!destFile.exists()) {
+                Log.e(TAG, "Failed to save: $filename")
+                return@withContext false
+            }
+            
+            val fileType = if (SAFHelper.isVideoFile(filename)) FileType.VIDEO else FileType.IMAGE
+            
+            // Add to saved statuses
+            val status = StatusEntity(
+                filename = filename,
+                originalUri = sourceUri,
+                localPath = destFile.absolutePath,
+                fileType = fileType,
+                source = StatusSource.SAVED,
+                createdAt = System.currentTimeMillis(),
+                fileSize = destFile.length()
+            )
+            statusDao.insertStatus(status)
+            
+            // Mark as downloaded
+            val downloaded = DownloadedStatus(
+                filename = filename,
+                originalPath = sourceUri,
+                savedPath = destFile.absolutePath
+            )
+            statusDao.markAsDownloaded(downloaded)
+            
+            Log.d(TAG, "Saved: $filename")
             return@withContext true
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting backup: ${e.message}")
+            Log.e(TAG, "Error saving status: ${e.message}")
             return@withContext false
         }
     }
     
     /**
-     * Clean up old backups (older than retention period)
+     * Save a cached status to permanent storage
      */
-    suspend fun cleanupOldBackups(): Int = withContext(Dispatchers.IO) {
+    suspend fun saveCachedStatus(cachedStatus: StatusEntity): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val savedDir = getSavedDirectory()
+            val sourceFile = File(cachedStatus.localPath)
+            val destFile = File(savedDir, cachedStatus.filename)
+            
+            if (!sourceFile.exists()) {
+                Log.e(TAG, "Source file not found: ${cachedStatus.localPath}")
+                return@withContext false
+            }
+            
+            sourceFile.copyTo(destFile, overwrite = true)
+            
+            // Add to saved statuses
+            val status = cachedStatus.copy(
+                id = 0, // New ID
+                source = StatusSource.SAVED,
+                localPath = destFile.absolutePath,
+                savedAt = System.currentTimeMillis()
+            )
+            statusDao.insertStatus(status)
+            
+            // Mark as downloaded
+            val downloaded = DownloadedStatus(
+                filename = cachedStatus.filename,
+                originalPath = cachedStatus.originalUri,
+                savedPath = destFile.absolutePath
+            )
+            statusDao.markAsDownloaded(downloaded)
+            
+            Log.d(TAG, "Saved cached status: ${cachedStatus.filename}")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving cached status: ${e.message}")
+            return@withContext false
+        }
+    }
+    
+    // ========== Download State ==========
+    
+    suspend fun isDownloaded(filename: String): Boolean {
+        return statusDao.isDownloaded(filename)
+    }
+    
+    fun getAllDownloaded(): LiveData<List<DownloadedStatus>> {
+        return statusDao.getAllDownloaded()
+    }
+    
+    suspend fun getAllDownloadedFilenames(): Set<String> {
+        return statusDao.getAllDownloadedFilenames().toSet()
+    }
+    
+    // ========== Cleanup ==========
+    
+    suspend fun deleteStatus(status: StatusEntity): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val file = File(status.localPath)
+            if (file.exists()) {
+                file.delete()
+            }
+            statusDao.deleteStatus(status)
+            
+            // If it was saved, also remove from downloaded
+            if (status.source == StatusSource.SAVED) {
+                statusDao.removeDownloadedStatus(status.filename)
+            }
+            
+            Log.d(TAG, "Deleted status: ${status.filename}")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting status: ${e.message}")
+            return@withContext false
+        }
+    }
+    
+    suspend fun cleanupOldCache(): Int = withContext(Dispatchers.IO) {
         try {
             val cutoffTime = System.currentTimeMillis() - (Constants.RETENTION_DAYS * 24 * 60 * 60 * 1000L)
-            val oldBackups = statusDao.getBackupsOlderThan(cutoffTime)
+            val oldStatuses = statusDao.getCachedStatusesOlderThan(cutoffTime)
             
             var deletedCount = 0
-            oldBackups.forEach { status ->
-                if (deleteBackup(status)) {
+            oldStatuses.forEach { status ->
+                if (deleteStatus(status)) {
                     deletedCount++
                 }
             }
             
-            Log.d(TAG, "Cleaned up $deletedCount old backups")
+            Log.d(TAG, "Cleaned up $deletedCount old cached files")
             return@withContext deletedCount
         } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning up old backups: ${e.message}")
+            Log.e(TAG, "Error cleaning up cache: ${e.message}")
             return@withContext 0
         }
     }
     
-    /**
-     * Get count of backed up files
-     */
-    suspend fun getBackupCount(): Int = statusDao.getCount()
+    // ========== Full Backup ==========
     
-    /**
-     * Perform a full backup of all new status files
-     */
     suspend fun performFullBackup(): Pair<Int, Int> = withContext(Dispatchers.IO) {
-        var backedUp = 0
+        var cached = 0
         var skipped = 0
         
         try {
@@ -162,21 +305,21 @@ class StatusRepository(private val context: Context) {
             Log.d(TAG, "Found ${statusFiles.size} status files")
             
             statusFiles.forEach { documentFile ->
-                val result = backupFile(documentFile)
+                val result = cacheStatus(documentFile)
                 if (result != null) {
-                    backedUp++
+                    cached++
                 } else {
                     skipped++
                 }
             }
             
-            // Clean up old backups
-            cleanupOldBackups()
+            // Clean up old files
+            cleanupOldCache()
             
         } catch (e: Exception) {
             Log.e(TAG, "Error in full backup: ${e.message}")
         }
         
-        return@withContext Pair(backedUp, skipped)
+        return@withContext Pair(cached, skipped)
     }
 }

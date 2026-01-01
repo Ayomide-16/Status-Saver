@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-files-path
-        name="status_backup"
-        path="Pictures/StatusBackup/" />
+        name="status_cache"
+        path="Pictures/StatusCache/" />
+    <external-files-path
+        name="status_saved"
+        path="Pictures/StatusSaved/" />
 </paths>

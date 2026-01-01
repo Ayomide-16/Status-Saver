@@ -4,28 +4,62 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="4dp"
-    app:cardCornerRadius="8dp"
+    app:cardCornerRadius="12dp"
     app:cardElevation="2dp">
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
+        <!-- Status Thumbnail -->
         <ImageView
             android:id="@+id/statusImage"
             android:layout_width="match_parent"
-            android:layout_height="120dp"
+            android:layout_height="140dp"
             android:scaleType="centerCrop"
             android:contentDescription="Status thumbnail" />
 
+        <!-- Video Play Indicator -->
         <ImageView
             android:id="@+id/videoIndicator"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_gravity="center"
             android:src="@drawable/ic_play"
             android:visibility="gone"
-            android:contentDescription="Video indicator" />
+            android:contentDescription="Video indicator"
+            android:background="@drawable/circle_bg"
+            android:padding="8dp" />
+
+        <!-- Download/Checkmark Button -->
+        <FrameLayout
+            android:id="@+id/downloadContainer"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="8dp">
+
+            <ImageView
+                android:id="@+id/btnDownload"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/ic_download"
+                android:padding="6dp"
+                android:background="@drawable/circle_bg_accent"
+                android:contentDescription="Download"
+                app:tint="@android:color/white" />
+
+            <ImageView
+                android:id="@+id/checkMark"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/ic_check"
+                android:padding="6dp"
+                android:background="@drawable/circle_bg_success"
+                android:contentDescription="Downloaded"
+                android:visibility="gone" />
+
+        </FrameLayout>
 
     </FrameLayout>
 

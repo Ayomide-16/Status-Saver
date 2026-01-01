@@ -5,7 +5,11 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [BackedUpStatus::class], version = 1, exportSchema = false)
+@Database(
+    entities = [StatusEntity::class, DownloadedStatus::class],
+    version = 1,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     
     abstract fun statusDao(): StatusDao
@@ -19,7 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "status_saver_database"
+                    "status_saver_db"
                 )
                 .fallbackToDestructiveMigration()
                 .build()

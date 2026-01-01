@@ -10,17 +10,16 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.GridLayoutManager
-import com.statussaver.app.data.database.BackedUpStatus
+import androidx.fragment.app.Fragment
+import com.statussaver.app.data.database.StatusSource
 import com.statussaver.app.databinding.ActivityMainBinding
-import com.statussaver.app.ui.FullScreenViewActivity
-import com.statussaver.app.ui.StatusAdapter
+import com.statussaver.app.service.StatusMonitorService
+import com.statussaver.app.ui.fragments.StatusSectionFragment
 import com.statussaver.app.util.PermissionHelper
 import com.statussaver.app.util.SAFHelper
+import com.statussaver.app.util.ThemeManager
 import com.statussaver.app.viewmodel.StatusViewModel
-import com.statussaver.app.worker.StatusBackupWorker
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,7 +29,6 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val viewModel: StatusViewModel by viewModels()
-    private lateinit var statusAdapter: StatusAdapter
 
     // Permission launcher
     private val permissionLauncher = registerForActivityResult(
@@ -39,6 +37,7 @@ class MainActivity : AppCompatActivity() {
         val allGranted = permissions.all { it.value }
         if (allGranted) {
             Log.d(TAG, "All permissions granted")
+            savePermissionGranted()
             checkSafAccess()
         } else {
             Toast.makeText(this, "Permissions required for app to work", Toast.LENGTH_LONG).show()
@@ -53,171 +52,148 @@ class MainActivity : AppCompatActivity() {
             handleSafResult(uri)
         } else {
             Log.d(TAG, "SAF folder selection cancelled")
-            showNoAccessUI()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Apply theme before setContentView
+        ThemeManager.applyTheme(this)
+        
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         setSupportActionBar(binding.toolbar)
         
-        setupRecyclerView()
-        setupObservers()
+        setupBottomNavigation()
         setupClickListeners()
+        observeViewModel()
         
-        checkPermissionsAndAccess()
+        checkInitialSetup()
     }
 
-    private fun setupRecyclerView() {
-        statusAdapter = StatusAdapter(
-            onItemClick = { status -> openFullScreen(status) },
-            onItemLongClick = { status -> 
-                showDeleteDialog(status)
-                true
+    private fun setupBottomNavigation() {
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            val fragment = when (item.itemId) {
+                R.id.nav_live -> StatusSectionFragment.newInstance(StatusSource.LIVE)
+                R.id.nav_saved -> StatusSectionFragment.newInstance(StatusSource.SAVED)
+                R.id.nav_cached -> StatusSectionFragment.newInstance(StatusSource.CACHED)
+                else -> return@setOnItemSelectedListener false
             }
-        )
-
-        binding.recyclerView.apply {
-            layoutManager = GridLayoutManager(this@MainActivity, 3)
-            adapter = statusAdapter
+            loadFragment(fragment)
+            true
         }
     }
 
-    private fun setupObservers() {
-        viewModel.allBackups.observe(this) { backups ->
-            statusAdapter.submitList(backups)
-            updateEmptyState(backups.isEmpty())
-        }
-
-        viewModel.isLoading.observe(this) { isLoading ->
-            binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-            binding.swipeRefresh.isRefreshing = isLoading
-        }
-
-        viewModel.backupResult.observe(this) { result ->
-            result?.let { (newCount, skippedCount) ->
-                Toast.makeText(
-                    this,
-                    "Backup complete: $newCount new, $skippedCount already saved",
-                    Toast.LENGTH_SHORT
-                ).show()
-                viewModel.clearBackupResult()
-            }
-        }
-
-        viewModel.hasValidPermission.observe(this) { hasPermission ->
-            if (hasPermission) {
-                showMainUI()
-                StatusBackupWorker.schedulePeriodicBackup(this)
-            } else {
-                showNoAccessUI()
-            }
-        }
+    private fun loadFragment(fragment: Fragment) {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragmentContainer, fragment)
+            .commit()
     }
 
     private fun setupClickListeners() {
-        binding.swipeRefresh.setOnRefreshListener {
-            viewModel.triggerBackup()
-        }
-
-        binding.fabRefresh.setOnClickListener {
-            viewModel.triggerBackup()
-        }
-
         binding.btnGrantAccess.setOnClickListener {
             launchSafPicker()
         }
     }
 
-    private fun checkPermissionsAndAccess() {
-        if (!PermissionHelper.hasAllPermissions(this)) {
-            val permissions = PermissionHelper.getRequiredPermissions()
-            permissionLauncher.launch(permissions)
+    private fun observeViewModel() {
+        viewModel.hasPermission.observe(this) { hasPermission ->
+            if (hasPermission) {
+                showMainUI()
+            } else {
+                showNoAccessUI()
+            }
+        }
+
+        viewModel.message.observe(this) { msg ->
+            msg?.let {
+                Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
+                viewModel.clearMessage()
+            }
+        }
+    }
+
+    private fun checkInitialSetup() {
+        val prefs = getSharedPreferences(com.statussaver.app.util.Constants.PREFS_NAME, MODE_PRIVATE)
+        val permissionGranted = prefs.getBoolean(com.statussaver.app.util.Constants.KEY_PERMISSION_GRANTED, false)
+        
+        if (!permissionGranted && !PermissionHelper.hasAllPermissions(this)) {
+            // First time - request permissions
+            requestPermissions()
         } else {
+            // Permissions already granted or handled
             checkSafAccess()
         }
+    }
+
+    private fun requestPermissions() {
+        val permissions = PermissionHelper.getRequiredPermissions()
+        permissionLauncher.launch(permissions)
+    }
+
+    private fun savePermissionGranted() {
+        val prefs = getSharedPreferences(com.statussaver.app.util.Constants.PREFS_NAME, MODE_PRIVATE)
+        prefs.edit().putBoolean(com.statussaver.app.util.Constants.KEY_PERMISSION_GRANTED, true).apply()
     }
 
     private fun checkSafAccess() {
         if (SAFHelper.hasValidPermission(this)) {
             viewModel.checkPermission()
             showMainUI()
-            StatusBackupWorker.schedulePeriodicBackup(this)
+            
+            // Start background service
+            StatusMonitorService.start(this)
+            
+            // Load default tab
+            binding.bottomNavigation.selectedItemId = R.id.nav_live
         } else {
             showNoAccessUI()
         }
     }
 
     private fun launchSafPicker() {
-        // Launch SAF folder picker
         Toast.makeText(
             this,
-            "Please navigate to: Android > media > com.whatsapp > WhatsApp > Media > .Statuses",
+            "Navigate to: Android → media → com.whatsapp → WhatsApp → Media → .Statuses",
             Toast.LENGTH_LONG
         ).show()
         safLauncher.launch(null)
     }
 
     private fun handleSafResult(uri: Uri) {
-        // Take persistable permission
         if (SAFHelper.takePersistablePermission(this, uri)) {
             SAFHelper.storeUri(this, uri)
             viewModel.checkPermission()
             showMainUI()
             
-            // Schedule background work and trigger initial backup
-            StatusBackupWorker.schedulePeriodicBackup(this)
-            viewModel.triggerBackup()
+            // Save folder selected state
+            val prefs = getSharedPreferences(com.statussaver.app.util.Constants.PREFS_NAME, MODE_PRIVATE)
+            prefs.edit().putBoolean(com.statussaver.app.util.Constants.KEY_FOLDER_SELECTED, true).apply()
             
-            Toast.makeText(this, "Access granted! Backing up statuses...", Toast.LENGTH_SHORT).show()
+            // Start background service
+            StatusMonitorService.start(this)
+            
+            // Load default tab
+            binding.bottomNavigation.selectedItemId = R.id.nav_live
+            
+            Toast.makeText(this, "Access granted!", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, "Failed to get permission", Toast.LENGTH_SHORT).show()
-            showNoAccessUI()
         }
     }
 
     private fun showMainUI() {
-        binding.recyclerView.visibility = View.VISIBLE
-        binding.fabRefresh.visibility = View.VISIBLE
+        binding.fragmentContainer.visibility = View.VISIBLE
+        binding.bottomNavigation.visibility = View.VISIBLE
         binding.noAccessLayout.visibility = View.GONE
+        binding.progressBar.visibility = View.GONE
     }
 
     private fun showNoAccessUI() {
-        binding.recyclerView.visibility = View.GONE
-        binding.fabRefresh.visibility = View.GONE
+        binding.fragmentContainer.visibility = View.GONE
+        binding.bottomNavigation.visibility = View.GONE
         binding.noAccessLayout.visibility = View.VISIBLE
-    }
-
-    private fun updateEmptyState(isEmpty: Boolean) {
-        binding.emptyState.visibility = if (isEmpty && binding.noAccessLayout.visibility == View.GONE) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
-    }
-
-    private fun openFullScreen(status: BackedUpStatus) {
-        val intent = Intent(this, FullScreenViewActivity::class.java).apply {
-            putExtra(FullScreenViewActivity.EXTRA_FILE_PATH, status.backupPath)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_TYPE, status.fileType.name)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_NAME, status.filename)
-        }
-        startActivity(intent)
-    }
-
-    private fun showDeleteDialog(status: BackedUpStatus) {
-        AlertDialog.Builder(this)
-            .setTitle("Delete Status")
-            .setMessage("Are you sure you want to delete this saved status?")
-            .setPositiveButton("Delete") { _, _ ->
-                viewModel.deleteBackup(status)
-                Toast.makeText(this, "Status deleted", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -228,43 +204,21 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_refresh -> {
-                viewModel.triggerBackup()
+                viewModel.refreshLiveStatuses()
                 true
             }
-            R.id.action_settings -> {
-                showSettingsDialog()
+            R.id.action_theme -> {
+                toggleTheme()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
-    private fun showSettingsDialog() {
-        val options = arrayOf("Clear All Data", "Reset Folder Access")
-        AlertDialog.Builder(this)
-            .setTitle("Settings")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> confirmClearData()
-                    1 -> {
-                        SAFHelper.clearStoredUri(this)
-                        viewModel.checkPermission()
-                        showNoAccessUI()
-                    }
-                }
-            }
-            .show()
-    }
-
-    private fun confirmClearData() {
-        AlertDialog.Builder(this)
-            .setTitle("Clear All Data")
-            .setMessage("This will delete all backed up statuses. Continue?")
-            .setPositiveButton("Clear") { _, _ ->
-                // Clear logic would go here
-                Toast.makeText(this, "Data cleared", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+    private fun toggleTheme() {
+        val newTheme = ThemeManager.toggleTheme(this)
+        val themeName = if (newTheme == ThemeManager.THEME_DARK) "Dark" else "WhatsApp Green"
+        Toast.makeText(this, "Switched to $themeName theme", Toast.LENGTH_SHORT).show()
+        recreate()
     }
 }
