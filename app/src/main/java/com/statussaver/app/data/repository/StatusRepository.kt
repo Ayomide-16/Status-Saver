@@ -263,6 +263,35 @@ class StatusRepository(private val context: Context) {
         return statusDao.getAllDownloadedFilenames().toSet()
     }
     
+    /**
+     * Mark a file as downloaded directly (for cached files)
+     */
+    suspend fun markAsDownloadedDirect(filename: String, originalUri: String, savedPath: String) {
+        withContext(Dispatchers.IO) {
+            val downloaded = DownloadedStatus(
+                filename = filename,
+                originalPath = originalUri,
+                savedPath = savedPath
+            )
+            statusDao.markAsDownloaded(downloaded)
+            
+            // Also add to saved statuses
+            val fileType = if (SAFHelper.isVideoFile(filename)) FileType.VIDEO else FileType.IMAGE
+            val status = StatusEntity(
+                filename = filename,
+                originalUri = originalUri,
+                localPath = savedPath,
+                fileType = fileType,
+                source = StatusSource.SAVED,
+                createdAt = System.currentTimeMillis(),
+                fileSize = File(savedPath).length()
+            )
+            statusDao.insertStatus(status)
+            
+            Log.d(TAG, "Marked as downloaded: $filename")
+        }
+    }
+    
     // ========== Cleanup ==========
     
     suspend fun deleteStatus(status: StatusEntity): Boolean = withContext(Dispatchers.IO) {

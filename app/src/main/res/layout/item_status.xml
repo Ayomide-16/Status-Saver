@@ -3,9 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="6dp"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="6dp"
+    android:layout_margin="4dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
     app:cardBackgroundColor="?attr/colorSurface">
 
     <FrameLayout
@@ -16,22 +16,22 @@
         <ImageView
             android:id="@+id/statusImage"
             android:layout_width="match_parent"
-            android:layout_height="160dp"
+            android:layout_height="140dp"
             android:scaleType="centerCrop"
             android:contentDescription="Status thumbnail" />
 
         <!-- Gradient Overlay -->
         <View
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="40dp"
             android:layout_gravity="bottom"
             android:background="@drawable/gradient_bottom" />
 
         <!-- Video Play Indicator -->
         <ImageView
             android:id="@+id/videoIndicator"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_gravity="center"
             android:src="@drawable/ic_play_circle"
             android:visibility="gone"
@@ -44,7 +44,9 @@
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
             android:orientation="vertical"
-            android:padding="8dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="40dp"
+            android:paddingBottom="4dp"
             android:visibility="gone">
 
             <TextView
@@ -52,7 +54,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@android:color/white"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:shadowColor="#80000000"
                 android:shadowDx="1"
                 android:shadowDy="1"
@@ -63,7 +65,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@android:color/white"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:alpha="0.8"
                 android:shadowColor="#80000000"
                 android:shadowDx="1"
@@ -72,26 +74,26 @@
 
         </LinearLayout>
 
-        <!-- Download/Checkmark Button Container -->
+        <!-- Download/Checkmark Button Container - SMALLER SIZE -->
         <FrameLayout
             android:id="@+id/downloadContainer"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:layout_gravity="bottom|end"
-            android:layout_margin="8dp">
+            android:layout_margin="6dp">
 
-            <!-- Download Button -->
+            <!-- Download Button - Smaller -->
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/btnDownload"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:src="@drawable/ic_download"
                 android:scaleType="center"
                 android:contentDescription="Download"
                 app:fabSize="mini"
-                app:fabCustomSize="44dp"
-                app:maxImageSize="24dp"
-                app:elevation="4dp"
+                app:fabCustomSize="32dp"
+                app:maxImageSize="16dp"
+                app:elevation="2dp"
                 app:backgroundTint="@color/app_green"
                 app:tint="@android:color/white" />
 
@@ -101,7 +103,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/ic_double_check"
-                android:padding="10dp"
+                android:padding="6dp"
                 android:background="@drawable/circle_bg_saved"
                 android:contentDescription="Saved"
                 android:visibility="gone" />

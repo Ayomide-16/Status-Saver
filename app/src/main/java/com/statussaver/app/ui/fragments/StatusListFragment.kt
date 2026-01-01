@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Fragment for displaying status list (Images or Videos)
@@ -217,15 +218,22 @@ class StatusListFragment : Fragment() {
                 val success = withContext(Dispatchers.IO) {
                     when (item.source) {
                         StatusSource.CACHED -> {
-                            val cachedStatuses = repository.getCachedStatuses().value
-                            val cachedStatus = cachedStatuses?.find { it.filename == item.filename }
-                            if (cachedStatus != null) {
-                                repository.saveCachedStatus(cachedStatus)
+                            // For cached files, copy from local cache path to saved folder
+                            val sourceFile = File(item.path)
+                            if (sourceFile.exists()) {
+                                val savedDir = repository.getSavedDirectory()
+                                val destFile = File(savedDir, item.filename)
+                                sourceFile.copyTo(destFile, overwrite = true)
+                                
+                                // Mark as downloaded in database
+                                repository.markAsDownloadedDirect(item.filename, item.uri, destFile.absolutePath)
+                                true
                             } else {
                                 false
                             }
                         }
                         else -> {
+                            // For live files, use URI-based saving
                             repository.saveStatus(item.filename, item.uri)
                         }
                     }
