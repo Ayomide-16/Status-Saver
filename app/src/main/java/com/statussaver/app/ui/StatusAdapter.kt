@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.decode.VideoFrameDecoder
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.statussaver.app.R
 import com.statussaver.app.data.database.FileType
 import com.statussaver.app.data.database.StatusSource
@@ -35,7 +36,7 @@ class StatusAdapter(
         downloadedFilenames = filenames
         // Refresh items to update download state
         currentList.forEachIndexed { index, item ->
-            val newState = filenames.contains(item.filename)
+            val newState = filenames.contains(item.filename) || item.source == StatusSource.SAVED
             if (item.isDownloaded != newState) {
                 notifyItemChanged(index)
             }
@@ -51,14 +52,16 @@ class StatusAdapter(
     override fun onBindViewHolder(holder: StatusViewHolder, position: Int) {
         val item = getItem(position)
         // Update download state from latest downloaded filenames
-        val updatedItem = item.copy(isDownloaded = downloadedFilenames.contains(item.filename) || item.source == StatusSource.SAVED)
+        val updatedItem = item.copy(
+            isDownloaded = downloadedFilenames.contains(item.filename) || item.source == StatusSource.SAVED
+        )
         holder.bind(updatedItem)
     }
 
     inner class StatusViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val imageView: ImageView = itemView.findViewById(R.id.statusImage)
         private val videoIndicator: ImageView = itemView.findViewById(R.id.videoIndicator)
-        private val btnDownload: ImageView = itemView.findViewById(R.id.btnDownload)
+        private val btnDownload: FloatingActionButton = itemView.findViewById(R.id.btnDownload)
         private val checkMark: ImageView = itemView.findViewById(R.id.checkMark)
 
         fun bind(item: StatusItem) {
@@ -71,7 +74,7 @@ class StatusAdapter(
             // Show video indicator for videos
             videoIndicator.visibility = if (item.fileType == FileType.VIDEO) View.VISIBLE else View.GONE
             
-            // Show download button or checkmark
+            // Show download button or double checkmark
             if (item.isDownloaded || item.source == StatusSource.SAVED) {
                 btnDownload.visibility = View.GONE
                 checkMark.visibility = View.VISIBLE

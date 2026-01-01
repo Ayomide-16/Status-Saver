@@ -3,9 +3,10 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="4dp"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="2dp">
+    android:layout_margin="6dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="?attr/colorSurface">
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -15,48 +16,56 @@
         <ImageView
             android:id="@+id/statusImage"
             android:layout_width="match_parent"
-            android:layout_height="140dp"
+            android:layout_height="160dp"
             android:scaleType="centerCrop"
             android:contentDescription="Status thumbnail" />
+
+        <!-- Gradient Overlay -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/gradient_bottom" />
 
         <!-- Video Play Indicator -->
         <ImageView
             android:id="@+id/videoIndicator"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_gravity="center"
-            android:src="@drawable/ic_play"
+            android:src="@drawable/ic_play_circle"
             android:visibility="gone"
-            android:contentDescription="Video indicator"
-            android:background="@drawable/circle_bg"
-            android:padding="8dp" />
+            android:contentDescription="Video indicator" />
 
-        <!-- Download/Checkmark Button -->
+        <!-- Download/Checkmark Button Container -->
         <FrameLayout
             android:id="@+id/downloadContainer"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_gravity="bottom|end"
             android:layout_margin="8dp">
 
-            <ImageView
+            <!-- Download Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/btnDownload"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:src="@drawable/ic_download"
-                android:padding="6dp"
-                android:background="@drawable/circle_bg_accent"
                 android:contentDescription="Download"
+                app:fabSize="mini"
+                app:elevation="4dp"
+                app:backgroundTint="@color/whatsapp_green"
                 app:tint="@android:color/white" />
 
+            <!-- Double Checkmark (Saved Indicator) -->
             <ImageView
                 android:id="@+id/checkMark"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:src="@drawable/ic_check"
-                android:padding="6dp"
-                android:background="@drawable/circle_bg_success"
-                android:contentDescription="Downloaded"
+                android:src="@drawable/ic_double_check"
+                android:padding="8dp"
+                android:background="@drawable/circle_bg_saved"
+                android:contentDescription="Saved"
                 android:visibility="gone" />
 
         </FrameLayout>

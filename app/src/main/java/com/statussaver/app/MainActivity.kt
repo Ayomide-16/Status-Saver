@@ -3,6 +3,7 @@ package com.statussaver.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.Html
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -10,12 +11,14 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.statussaver.app.data.database.StatusSource
 import com.statussaver.app.databinding.ActivityMainBinding
 import com.statussaver.app.service.StatusMonitorService
 import com.statussaver.app.ui.fragments.StatusSectionFragment
+import com.statussaver.app.util.Constants
 import com.statussaver.app.util.PermissionHelper
 import com.statussaver.app.util.SAFHelper
 import com.statussaver.app.util.ThemeManager
@@ -95,6 +98,23 @@ class MainActivity : AppCompatActivity() {
         binding.btnGrantAccess.setOnClickListener {
             launchSafPicker()
         }
+        
+        // Theme toggle button in toolbar
+        binding.btnThemeToggle.setOnClickListener {
+            toggleTheme()
+        }
+        
+        // Update theme icon based on current theme
+        updateThemeIcon()
+    }
+
+    private fun updateThemeIcon() {
+        val iconRes = if (ThemeManager.isDarkTheme(this)) {
+            R.drawable.ic_light_mode
+        } else {
+            R.drawable.ic_dark_mode
+        }
+        binding.btnThemeToggle.setImageResource(iconRes)
     }
 
     private fun observeViewModel() {
@@ -115,8 +135,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkInitialSetup() {
-        val prefs = getSharedPreferences(com.statussaver.app.util.Constants.PREFS_NAME, MODE_PRIVATE)
-        val permissionGranted = prefs.getBoolean(com.statussaver.app.util.Constants.KEY_PERMISSION_GRANTED, false)
+        val prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
+        val permissionGranted = prefs.getBoolean(Constants.KEY_PERMISSION_GRANTED, false)
         
         if (!permissionGranted && !PermissionHelper.hasAllPermissions(this)) {
             // First time - request permissions
@@ -133,8 +153,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun savePermissionGranted() {
-        val prefs = getSharedPreferences(com.statussaver.app.util.Constants.PREFS_NAME, MODE_PRIVATE)
-        prefs.edit().putBoolean(com.statussaver.app.util.Constants.KEY_PERMISSION_GRANTED, true).apply()
+        val prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
+        prefs.edit().putBoolean(Constants.KEY_PERMISSION_GRANTED, true).apply()
     }
 
     private fun checkSafAccess() {
@@ -168,8 +188,8 @@ class MainActivity : AppCompatActivity() {
             showMainUI()
             
             // Save folder selected state
-            val prefs = getSharedPreferences(com.statussaver.app.util.Constants.PREFS_NAME, MODE_PRIVATE)
-            prefs.edit().putBoolean(com.statussaver.app.util.Constants.KEY_FOLDER_SELECTED, true).apply()
+            val prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
+            prefs.edit().putBoolean(Constants.KEY_FOLDER_SELECTED, true).apply()
             
             // Start background service
             StatusMonitorService.start(this)
@@ -198,6 +218,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
+        
+        // Set Auto-Save checkbox state
+        val prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
+        val autoSaveEnabled = prefs.getBoolean(Constants.KEY_AUTO_SAVE_ENABLED, false)
+        menu.findItem(R.id.action_autosave)?.isChecked = autoSaveEnabled
+        
         return true
     }
 
@@ -205,20 +231,59 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_refresh -> {
                 viewModel.refreshLiveStatuses()
+                Toast.makeText(this, "Refreshing...", Toast.LENGTH_SHORT).show()
                 true
             }
-            R.id.action_theme -> {
-                toggleTheme()
+            R.id.action_autosave -> {
+                toggleAutoSave(item)
+                true
+            }
+            R.id.action_how_to_use -> {
+                showHowToUseDialog()
+                true
+            }
+            R.id.action_privacy_policy -> {
+                showPrivacyPolicyDialog()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
+    private fun toggleAutoSave(item: MenuItem) {
+        val prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
+        val currentState = prefs.getBoolean(Constants.KEY_AUTO_SAVE_ENABLED, false)
+        val newState = !currentState
+        
+        prefs.edit().putBoolean(Constants.KEY_AUTO_SAVE_ENABLED, newState).apply()
+        item.isChecked = newState
+        
+        val message = if (newState) {
+            "Auto-Save enabled: All new statuses will be saved automatically"
+        } else {
+            "Auto-Save disabled"
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showHowToUseDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.how_to_use_title)
+            .setMessage(Html.fromHtml(getString(R.string.how_to_use_content), Html.FROM_HTML_MODE_LEGACY))
+            .setPositiveButton("Got it!", null)
+            .show()
+    }
+
+    private fun showPrivacyPolicyDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.privacy_policy_title)
+            .setMessage(Html.fromHtml(getString(R.string.privacy_policy_content), Html.FROM_HTML_MODE_LEGACY))
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
     private fun toggleTheme() {
-        val newTheme = ThemeManager.toggleTheme(this)
-        val themeName = if (newTheme == ThemeManager.THEME_DARK) "Dark" else "WhatsApp Green"
-        Toast.makeText(this, "Switched to $themeName theme", Toast.LENGTH_SHORT).show()
+        ThemeManager.toggleTheme(this)
         recreate()
     }
 }

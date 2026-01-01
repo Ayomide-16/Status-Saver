@@ -1,4 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Status Saver</string>
+    
+    <!-- How to Use Guide -->
+    <string name="how_to_use_title">How to Use Status Saver</string>
+    <string name="how_to_use_content">
+<![CDATA[
+<h3>📱 Getting Started</h3>
+<p>1. <b>Select WhatsApp Folder:</b> On first launch, grant access to the WhatsApp status folder. Navigate to Android → media → com.whatsapp → WhatsApp → Media → .Statuses</p>
+
+<h3>👁️ Viewing Status</h3>
+<p>2. <b>Live Tab:</b> View all currently active WhatsApp statuses here. These are visible for 24 hours.</p>
+<p>3. <b>Saved Tab:</b> Access all statuses you\'ve permanently saved.</p>
+<p>4. <b>Recent Tab:</b> View automatically cached statuses from the past 7 days.</p>
+
+<h3>💾 Saving Status</h3>
+<p>5. <b>Manual Save:</b> Tap the download button on any status to save it permanently.</p>
+<p>6. <b>Auto-Save:</b> Enable Auto-Save in menu to automatically save ALL new statuses.</p>
+
+<h3>🔄 Auto-Caching</h3>
+<p>7. <b>Background Caching:</b> The app automatically caches new statuses even when closed. These are kept for 7 days in the Recent tab.</p>
+
+<h3>🎨 Themes</h3>
+<p>8. <b>Theme Toggle:</b> Tap the sun/moon icon in the toolbar to switch between light and dark themes.</p>
+]]>
+    </string>
+    
+    <!-- Privacy Policy -->
+    <string name="privacy_policy_title">Privacy Policy</string>
+    <string name="privacy_policy_content">
+<![CDATA[
+<h3>📋 Data Collection</h3>
+<p>Status Saver does <b>NOT</b> collect, transmit, or share any personal data. All operations happen locally on your device.</p>
+
+<h3>💾 Local Storage</h3>
+<p>• <b>Saved Status:</b> Saved to your device\'s internal storage</p>
+<p>• <b>Cached Status:</b> Temporarily stored for 7 days, then auto-deleted</p>
+<p>• <b>Preferences:</b> Theme and settings stored locally</p>
+
+<h3>🔐 Permissions Used</h3>
+<p>• <b>Storage Access:</b> To read WhatsApp statuses and save files</p>
+<p>• <b>Notifications:</b> To show background service status</p>
+<p>• <b>Boot Completed:</b> To restart auto-caching after device reboot</p>
+
+<h3>🌐 Network</h3>
+<p>This app does <b>NOT</b> require internet access. No data is sent to external servers.</p>
+
+<h3>📧 Contact</h3>
+<p>For questions or concerns, please contact the developer.</p>
+]]>
+    </string>
 </resources>

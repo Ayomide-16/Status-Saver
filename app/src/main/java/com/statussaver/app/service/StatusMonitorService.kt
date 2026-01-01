@@ -119,10 +119,23 @@ class StatusMonitorService : Service() {
         
         serviceScope.launch {
             try {
+                val prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
+                val autoSaveEnabled = prefs.getBoolean(Constants.KEY_AUTO_SAVE_ENABLED, false)
+                
                 val (cached, skipped) = repository.performFullBackup()
                 if (cached > 0) {
                     Log.d(TAG, "Cached $cached new statuses")
                     updateNotification(cached)
+                    
+                    // If Auto-Save is enabled, also save all newly cached files
+                    if (autoSaveEnabled) {
+                        Log.d(TAG, "Auto-Save enabled, saving cached files...")
+                        // Save newly cached files to Saved folder
+                        val cachedStatuses = repository.getCachedStatuses().value ?: emptyList()
+                        cachedStatuses.take(cached).forEach { status ->
+                            repository.saveCachedStatus(status)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error checking for new statuses: ${e.message}")

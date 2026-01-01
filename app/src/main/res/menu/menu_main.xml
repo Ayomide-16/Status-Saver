@@ -9,9 +9,19 @@
         app:showAsAction="ifRoom" />
 
     <item
-        android:id="@+id/action_theme"
-        android:icon="@drawable/ic_theme"
-        android:title="Toggle Theme"
+        android:id="@+id/action_autosave"
+        android:title="Auto-Save"
+        android:checkable="true"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_how_to_use"
+        android:title="How to Use"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_privacy_policy"
+        android:title="Privacy Policy"
         app:showAsAction="never" />
 
 </menu>

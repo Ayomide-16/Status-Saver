@@ -8,6 +8,7 @@ object Constants {
     const val KEY_PERMISSION_GRANTED = "permission_granted"
     const val KEY_FOLDER_SELECTED = "folder_selected"
     const val KEY_BACKUP_INTERVAL = "backup_interval"
+    const val KEY_AUTO_SAVE_ENABLED = "auto_save_enabled"
     
     // Folder Names
     const val CACHE_FOLDER_NAME = "StatusCache"
