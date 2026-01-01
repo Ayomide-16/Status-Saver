@@ -1,23 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- WhatsApp Brand Colors -->
-    <color name="whatsapp_green">#25D366</color>
-    <color name="whatsapp_green_dark">#075E54</color>
-    <color name="whatsapp_teal">#128C7E</color>
-    <color name="whatsapp_light_green">#DCF8C6</color>
+    <!-- Main App Green - Unified Color -->
+    <color name="app_green">#00A884</color>
+    <color name="app_green_dark">#008069</color>
+    <color name="app_green_light">#25D366</color>
+    
+    <!-- WhatsApp Brand Colors (for reference) -->
+    <color name="whatsapp_green">#00A884</color>
+    <color name="whatsapp_teal">#008069</color>
     
     <!-- Light Theme (WhatsApp Green) -->
-    <color name="green_primary">#075E54</color>
-    <color name="green_primary_variant">#054D44</color>
-    <color name="green_secondary">#25D366</color>
+    <color name="green_primary">#008069</color>
+    <color name="green_primary_variant">#006B5A</color>
+    <color name="green_secondary">#00A884</color>
     <color name="green_background">#FFFFFF</color>
     <color name="green_surface">#FFFFFF</color>
+    <color name="green_surface_variant">#F7F8FA</color>
     <color name="green_on_primary">#FFFFFF</color>
-    <color name="green_on_secondary">#000000</color>
-    <color name="green_on_background">#000000</color>
-    <color name="green_on_surface">#000000</color>
-    <color name="green_status_bar">#054D44</color>
-    <color name="green_card_background">#F0F0F0</color>
+    <color name="green_on_secondary">#FFFFFF</color>
+    <color name="green_on_background">#1A1A1A</color>
+    <color name="green_on_surface">#1A1A1A</color>
+    <color name="green_status_bar">#006B5A</color>
+    <color name="green_card_background">#F5F5F5</color>
     
     <!-- Dark Theme -->
     <color name="dark_primary">#1F2C34</color>
@@ -25,6 +29,7 @@
     <color name="dark_secondary">#00A884</color>
     <color name="dark_background">#0B141A</color>
     <color name="dark_surface">#1F2C34</color>
+    <color name="dark_surface_variant">#233138</color>
     <color name="dark_on_primary">#FFFFFF</color>
     <color name="dark_on_secondary">#000000</color>
     <color name="dark_on_background">#E9EDEF</color>
@@ -33,9 +38,10 @@
     <color name="dark_card_background">#233138</color>
     
     <!-- Common Colors -->
-    <color name="ic_launcher_background">#075E54</color>
+    <color name="ic_launcher_background">#008069</color>
     <color name="divider_light">#E0E0E0</color>
     <color name="divider_dark">#2A3942</color>
-    <color name="success_green">#4CAF50</color>
+    <color name="success_green">#00A884</color>
     <color name="error_red">#F44336</color>
+    <color name="text_secondary">#8696A0</color>
 </resources>

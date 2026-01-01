@@ -8,7 +8,7 @@ interface StatusDao {
     
     // ========== Status Operations ==========
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertStatus(status: StatusEntity): Long
     
     @Query("SELECT * FROM statuses WHERE source = :source ORDER BY savedAt DESC")
@@ -17,7 +17,7 @@ interface StatusDao {
     @Query("SELECT * FROM statuses WHERE source = :source ORDER BY savedAt DESC")
     suspend fun getStatusesBySourceSync(source: StatusSource): List<StatusEntity>
     
-    @Query("SELECT * FROM statuses WHERE source = :source AND fileType = :fileType ORDER BY savedAt DESC")
+    @Query("SELECT DISTINCT * FROM statuses WHERE source = :source AND fileType = :fileType ORDER BY savedAt DESC")
     fun getStatusesBySourceAndType(source: StatusSource, fileType: FileType): LiveData<List<StatusEntity>>
     
     @Query("SELECT * FROM statuses WHERE savedAt < :timestamp AND source = 'CACHED'")
@@ -37,6 +37,10 @@ interface StatusDao {
     
     @Query("SELECT COUNT(*) FROM statuses WHERE source = :source")
     suspend fun getCountBySource(source: StatusSource): Int
+    
+    // Remove duplicates - keep only the latest entry for each filename
+    @Query("DELETE FROM statuses WHERE id NOT IN (SELECT MIN(id) FROM statuses GROUP BY filename, source)")
+    suspend fun removeDuplicates(): Int
     
     // ========== Downloaded Status Operations ==========
     

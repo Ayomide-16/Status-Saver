@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:layout_margin="6dp"
     app:cardCornerRadius="16dp"
-    app:cardElevation="4dp"
+    app:cardElevation="6dp"
     app:cardBackgroundColor="?attr/colorSurface">
 
     <FrameLayout
@@ -23,7 +23,7 @@
         <!-- Gradient Overlay -->
         <View
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="56dp"
             android:layout_gravity="bottom"
             android:background="@drawable/gradient_bottom" />
 
@@ -37,24 +37,62 @@
             android:visibility="gone"
             android:contentDescription="Video indicator" />
 
+        <!-- Cache Info Overlay -->
+        <LinearLayout
+            android:id="@+id/cacheInfoLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/txtCacheDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@android:color/white"
+                android:textSize="10sp"
+                android:shadowColor="#80000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2" />
+
+            <TextView
+                android:id="@+id/txtExpiryDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@android:color/white"
+                android:textSize="10sp"
+                android:alpha="0.8"
+                android:shadowColor="#80000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2" />
+
+        </LinearLayout>
+
         <!-- Download/Checkmark Button Container -->
         <FrameLayout
             android:id="@+id/downloadContainer"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:layout_gravity="bottom|end"
             android:layout_margin="8dp">
 
             <!-- Download Button -->
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/btnDownload"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:src="@drawable/ic_download"
+                android:scaleType="center"
                 android:contentDescription="Download"
                 app:fabSize="mini"
+                app:fabCustomSize="44dp"
+                app:maxImageSize="24dp"
                 app:elevation="4dp"
-                app:backgroundTint="@color/whatsapp_green"
+                app:backgroundTint="@color/app_green"
                 app:tint="@android:color/white" />
 
             <!-- Double Checkmark (Saved Indicator) -->
@@ -63,7 +101,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/ic_double_check"
-                android:padding="8dp"
+                android:padding="10dp"
                 android:background="@drawable/circle_bg_saved"
                 android:contentDescription="Saved"
                 android:visibility="gone" />

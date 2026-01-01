@@ -1,5 +1,8 @@
 package com.statussaver.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -8,6 +11,7 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -15,6 +19,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.statussaver.app.data.database.StatusSource
+import com.statussaver.app.data.repository.StatusRepository
 import com.statussaver.app.databinding.ActivityMainBinding
 import com.statussaver.app.service.StatusMonitorService
 import com.statussaver.app.ui.fragments.StatusSectionFragment
@@ -32,6 +37,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val viewModel: StatusViewModel by viewModels()
+    private lateinit var repository: StatusRepository
 
     // Permission launcher
     private val permissionLauncher = registerForActivityResult(
@@ -65,6 +71,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        repository = StatusRepository(this)
 
         setSupportActionBar(binding.toolbar)
         
@@ -238,6 +246,14 @@ class MainActivity : AppCompatActivity() {
                 toggleAutoSave(item)
                 true
             }
+            R.id.action_cache_duration -> {
+                showCacheDurationDialog()
+                true
+            }
+            R.id.action_folder_paths -> {
+                showFolderPathsDialog()
+                true
+            }
             R.id.action_how_to_use -> {
                 showHowToUseDialog()
                 true
@@ -264,6 +280,72 @@ class MainActivity : AppCompatActivity() {
             "Auto-Save disabled"
         }
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showCacheDurationDialog() {
+        val currentDays = Constants.getRetentionDays(this)
+        
+        val dialogView = layoutInflater.inflate(R.layout.dialog_cache_duration, null)
+        val seekBar = dialogView.findViewById<SeekBar>(R.id.seekBarDays)
+        val txtDays = dialogView.findViewById<android.widget.TextView>(R.id.txtDays)
+        
+        seekBar.max = Constants.MAX_RETENTION_DAYS - Constants.MIN_RETENTION_DAYS
+        seekBar.progress = currentDays - Constants.MIN_RETENTION_DAYS
+        txtDays.text = "$currentDays days"
+        
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val days = progress + Constants.MIN_RETENTION_DAYS
+                txtDays.text = "$days days"
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        
+        AlertDialog.Builder(this)
+            .setTitle("Cache Duration")
+            .setMessage("Set how long cached statuses should be kept before automatic deletion.")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                val newDays = seekBar.progress + Constants.MIN_RETENTION_DAYS
+                Constants.setRetentionDays(this, newDays)
+                Toast.makeText(this, "Cache duration set to $newDays days", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showFolderPathsDialog() {
+        val whatsAppPath = repository.getWhatsAppStatusUri()
+        val cachePath = repository.getCacheDirectory().absolutePath
+        val savedPath = repository.getSavedDirectory().absolutePath
+        
+        val message = """
+            <b>WhatsApp Status Folder:</b><br/>
+            <small>$whatsAppPath</small><br/><br/>
+            
+            <b>Cached Status Folder:</b><br/>
+            <small>$cachePath</small><br/><br/>
+            
+            <b>Saved Status Folder:</b><br/>
+            <small>$savedPath</small>
+        """.trimIndent()
+        
+        AlertDialog.Builder(this)
+            .setTitle("Folder Paths")
+            .setMessage(Html.fromHtml(message, Html.FROM_HTML_MODE_LEGACY))
+            .setPositiveButton("OK", null)
+            .setNeutralButton("Copy Paths") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val allPaths = """
+                    WhatsApp: $whatsAppPath
+                    Cache: $cachePath
+                    Saved: $savedPath
+                """.trimIndent()
+                clipboard.setPrimaryClip(ClipData.newPlainText("Folder Paths", allPaths))
+                Toast.makeText(this, "Paths copied to clipboard", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun showHowToUseDialog() {

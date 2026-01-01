@@ -10,13 +10,16 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import com.statussaver.app.data.database.FileType
-import com.statussaver.app.data.database.StatusEntity
 import com.statussaver.app.data.database.StatusSource
 import com.statussaver.app.data.repository.StatusRepository
 import com.statussaver.app.databinding.FragmentStatusListBinding
 import com.statussaver.app.ui.FullScreenViewActivity
 import com.statussaver.app.ui.StatusAdapter
 import com.statussaver.app.viewmodel.StatusViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Fragment for displaying status list (Images or Videos)
@@ -28,6 +31,7 @@ class StatusListFragment : Fragment() {
     
     private val viewModel: StatusViewModel by activityViewModels()
     private lateinit var adapter: StatusAdapter
+    private lateinit var repository: StatusRepository
     
     private var statusSource: StatusSource = StatusSource.LIVE
     private var fileType: FileType = FileType.IMAGE
@@ -52,6 +56,7 @@ class StatusListFragment : Fragment() {
             statusSource = StatusSource.valueOf(it.getString(ARG_SOURCE, StatusSource.LIVE.name))
             fileType = FileType.valueOf(it.getString(ARG_FILE_TYPE, FileType.IMAGE.name))
         }
+        repository = StatusRepository(requireContext())
     }
     
     override fun onCreateView(
@@ -72,20 +77,30 @@ class StatusListFragment : Fragment() {
     
     private fun setupRecyclerView() {
         adapter = StatusAdapter(
+            showCacheInfo = (statusSource == StatusSource.CACHED),
             onItemClick = { item -> openFullScreen(item) },
             onDownloadClick = { item -> downloadStatus(item) }
         )
         
         binding.recyclerView.apply {
-            layoutManager = GridLayoutManager(requireContext(), 3)
+            layoutManager = GridLayoutManager(requireContext(), 2)
             adapter = this@StatusListFragment.adapter
+            setHasFixedSize(true)
         }
     }
     
     private fun setupSwipeRefresh() {
+        binding.swipeRefresh.setColorSchemeResources(
+            com.statussaver.app.R.color.app_green
+        )
         binding.swipeRefresh.setOnRefreshListener {
-            viewModel.refreshData(statusSource, fileType)
+            refreshData()
         }
+    }
+    
+    private fun refreshData() {
+        viewModel.refreshData(statusSource, fileType)
+        binding.swipeRefresh.isRefreshing = false
     }
     
     private fun observeData() {
@@ -114,7 +129,9 @@ class StatusListFragment : Fragment() {
                     uri = it.uri,
                     fileType = it.fileType,
                     source = StatusSource.LIVE,
-                    isDownloaded = it.isDownloaded
+                    isDownloaded = it.isDownloaded,
+                    cachedAt = 0L,
+                    expiresAt = 0L
                 )
             }
             adapter.submitList(items)
@@ -132,7 +149,9 @@ class StatusListFragment : Fragment() {
                     uri = it.originalUri,
                     fileType = it.fileType,
                     source = StatusSource.SAVED,
-                    isDownloaded = true // Already saved
+                    isDownloaded = true,
+                    cachedAt = it.savedAt,
+                    expiresAt = 0L // Saved files don't expire
                 )
             }
             adapter.submitList(items)
@@ -142,7 +161,13 @@ class StatusListFragment : Fragment() {
     
     private fun observeCachedStatuses() {
         viewModel.getCachedStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
-            val items = statuses.map {
+            val retentionDays = com.statussaver.app.util.Constants.getRetentionDays(requireContext())
+            val retentionMs = retentionDays * 24L * 60L * 60L * 1000L
+            
+            // Remove duplicates by filename
+            val uniqueStatuses = statuses.distinctBy { it.filename }
+            
+            val items = uniqueStatuses.map {
                 StatusAdapter.StatusItem(
                     id = it.id,
                     filename = it.filename,
@@ -150,7 +175,9 @@ class StatusListFragment : Fragment() {
                     uri = it.originalUri,
                     fileType = it.fileType,
                     source = StatusSource.CACHED,
-                    isDownloaded = viewModel.isDownloaded(it.filename)
+                    isDownloaded = viewModel.isDownloaded(it.filename),
+                    cachedAt = it.savedAt,
+                    expiresAt = it.savedAt + retentionMs
                 )
             }
             adapter.submitList(items)
@@ -181,12 +208,45 @@ class StatusListFragment : Fragment() {
             return
         }
         
-        viewModel.saveStatus(item.filename, item.uri, item.source)
+        // Show loading
+        Toast.makeText(requireContext(), "Saving...", Toast.LENGTH_SHORT).show()
+        
+        // Perform download in background
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    when (item.source) {
+                        StatusSource.CACHED -> {
+                            val cachedStatuses = repository.getCachedStatuses().value
+                            val cachedStatus = cachedStatuses?.find { it.filename == item.filename }
+                            if (cachedStatus != null) {
+                                repository.saveCachedStatus(cachedStatus)
+                            } else {
+                                false
+                            }
+                        }
+                        else -> {
+                            repository.saveStatus(item.filename, item.uri)
+                        }
+                    }
+                }
+                
+                if (success) {
+                    Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
+                    // Refresh downloaded state
+                    viewModel.loadDownloadedFilenames()
+                } else {
+                    Toast.makeText(requireContext(), "Failed to save", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
     
     override fun onResume() {
         super.onResume()
-        viewModel.refreshData(statusSource, fileType)
+        refreshData()
     }
     
     override fun onDestroyView() {

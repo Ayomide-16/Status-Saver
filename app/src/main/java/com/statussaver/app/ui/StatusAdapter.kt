@@ -4,6 +4,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -14,13 +16,18 @@ import com.statussaver.app.R
 import com.statussaver.app.data.database.FileType
 import com.statussaver.app.data.database.StatusSource
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class StatusAdapter(
+    private val showCacheInfo: Boolean = false,
     private val onItemClick: (StatusItem) -> Unit,
     private val onDownloadClick: (StatusItem) -> Unit
 ) : ListAdapter<StatusAdapter.StatusItem, StatusAdapter.StatusViewHolder>(StatusDiffCallback()) {
 
     private var downloadedFilenames: Set<String> = emptySet()
+    private val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
     
     data class StatusItem(
         val id: Long,
@@ -29,7 +36,9 @@ class StatusAdapter(
         val uri: String,
         val fileType: FileType,
         val source: StatusSource,
-        var isDownloaded: Boolean = false
+        var isDownloaded: Boolean = false,
+        val cachedAt: Long = 0L,
+        val expiresAt: Long = 0L
     )
     
     fun updateDownloadedState(filenames: Set<String>) {
@@ -63,6 +72,9 @@ class StatusAdapter(
         private val videoIndicator: ImageView = itemView.findViewById(R.id.videoIndicator)
         private val btnDownload: FloatingActionButton = itemView.findViewById(R.id.btnDownload)
         private val checkMark: ImageView = itemView.findViewById(R.id.checkMark)
+        private val cacheInfoLayout: LinearLayout = itemView.findViewById(R.id.cacheInfoLayout)
+        private val txtCacheDate: TextView = itemView.findViewById(R.id.txtCacheDate)
+        private val txtExpiryDate: TextView = itemView.findViewById(R.id.txtExpiryDate)
 
         fun bind(item: StatusItem) {
             // Load thumbnail
@@ -73,6 +85,20 @@ class StatusAdapter(
             
             // Show video indicator for videos
             videoIndicator.visibility = if (item.fileType == FileType.VIDEO) View.VISIBLE else View.GONE
+            
+            // Show cache info for cached items
+            if (showCacheInfo && item.cachedAt > 0) {
+                cacheInfoLayout.visibility = View.VISIBLE
+                txtCacheDate.text = "Cached: ${dateFormat.format(Date(item.cachedAt))}"
+                if (item.expiresAt > 0) {
+                    txtExpiryDate.text = "Expires: ${dateFormat.format(Date(item.expiresAt))}"
+                    txtExpiryDate.visibility = View.VISIBLE
+                } else {
+                    txtExpiryDate.visibility = View.GONE
+                }
+            } else {
+                cacheInfoLayout.visibility = View.GONE
+            }
             
             // Show download button or double checkmark
             if (item.isDownloaded || item.source == StatusSource.SAVED) {

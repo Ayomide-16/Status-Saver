@@ -36,21 +36,32 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
     init {
         checkPermission()
         loadDownloadedFilenames()
+        cleanupDuplicates()
     }
     
     fun checkPermission() {
         _hasPermission.value = SAFHelper.hasValidPermission(getApplication())
     }
     
-    private fun loadDownloadedFilenames() {
+    fun loadDownloadedFilenames() {
         viewModelScope.launch {
             _downloadedFilenames.value = repository.getAllDownloadedFilenames()
+        }
+    }
+    
+    private fun cleanupDuplicates() {
+        viewModelScope.launch {
+            repository.removeDuplicates()
         }
     }
     
     // ========== Live Statuses ==========
     
     fun getLiveStatuses(fileType: FileType): LiveData<List<StatusRepository.StatusFile>> {
+        // Trigger refresh on first access
+        if (_liveImages.value?.isEmpty() == true || _liveVideos.value?.isEmpty() == true) {
+            refreshLiveStatuses()
+        }
         return when (fileType) {
             FileType.IMAGE -> _liveImages
             FileType.VIDEO -> _liveVideos
@@ -64,6 +75,8 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
                 val allStatuses = repository.getLiveStatuses()
                 _liveImages.value = allStatuses.filter { it.fileType == FileType.IMAGE }
                 _liveVideos.value = allStatuses.filter { it.fileType == FileType.VIDEO }
+            } catch (e: Exception) {
+                _message.value = "Error refreshing: ${e.message}"
             } finally {
                 _isLoading.value = false
             }

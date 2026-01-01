@@ -36,6 +36,10 @@ class StatusRepository(private val context: Context) {
         return dir
     }
     
+    fun getWhatsAppStatusUri(): String {
+        return SAFHelper.getStoredUri(context)?.toString() ?: "Not set"
+    }
+    
     // ========== Live Status (from WhatsApp folder) ==========
     
     data class StatusFile(
@@ -126,6 +130,11 @@ class StatusRepository(private val context: Context) {
             )
             
             val id = statusDao.insertStatus(status)
+            if (id == -1L) {
+                // Already exists (IGNORE strategy)
+                return@withContext null
+            }
+            
             Log.d(TAG, "Cached: $filename (id: $id)")
             
             return@withContext status.copy(id = id)
@@ -159,9 +168,12 @@ class StatusRepository(private val context: Context) {
                 FileOutputStream(destFile).use { output ->
                     input.copyTo(output)
                 }
+            } ?: run {
+                Log.e(TAG, "Failed to open input stream for: $sourceUri")
+                return@withContext false
             }
             
-            if (!destFile.exists()) {
+            if (!destFile.exists() || destFile.length() == 0L) {
                 Log.e(TAG, "Failed to save: $filename")
                 return@withContext false
             }
@@ -188,10 +200,10 @@ class StatusRepository(private val context: Context) {
             )
             statusDao.markAsDownloaded(downloaded)
             
-            Log.d(TAG, "Saved: $filename")
+            Log.d(TAG, "Saved: $filename to ${destFile.absolutePath}")
             return@withContext true
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving status: ${e.message}")
+            Log.e(TAG, "Error saving status: ${e.message}", e)
             return@withContext false
         }
     }
@@ -274,9 +286,21 @@ class StatusRepository(private val context: Context) {
         }
     }
     
+    suspend fun removeDuplicates(): Int = withContext(Dispatchers.IO) {
+        try {
+            val count = statusDao.removeDuplicates()
+            Log.d(TAG, "Removed $count duplicate entries")
+            return@withContext count
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing duplicates: ${e.message}")
+            return@withContext 0
+        }
+    }
+    
     suspend fun cleanupOldCache(): Int = withContext(Dispatchers.IO) {
         try {
-            val cutoffTime = System.currentTimeMillis() - (Constants.RETENTION_DAYS * 24 * 60 * 60 * 1000L)
+            val retentionDays = Constants.getRetentionDays(context)
+            val cutoffTime = System.currentTimeMillis() - (retentionDays * 24 * 60 * 60 * 1000L)
             val oldStatuses = statusDao.getCachedStatusesOlderThan(cutoffTime)
             
             var deletedCount = 0
@@ -286,7 +310,7 @@ class StatusRepository(private val context: Context) {
                 }
             }
             
-            Log.d(TAG, "Cleaned up $deletedCount old cached files")
+            Log.d(TAG, "Cleaned up $deletedCount old cached files (retention: $retentionDays days)")
             return@withContext deletedCount
         } catch (e: Exception) {
             Log.e(TAG, "Error cleaning up cache: ${e.message}")
