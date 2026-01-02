@@ -6,6 +6,14 @@
     android:background="@android:color/black"
     android:fitsSystemWindows="true">
 
+    <!-- ViewPager2 for swiping between media files -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal" />
+
+    <!-- Fallback views for single-item mode (backward compatibility) -->
     <ImageView
         android:id="@+id/fullScreenImage"
         android:layout_width="match_parent"
@@ -44,5 +52,20 @@
         android:contentDescription="Share"
         app:backgroundTint="@color/whatsapp_green"
         app:tint="@android:color/white" />
+
+    <!-- Page indicator -->
+    <TextView
+        android:id="@+id/pageIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="16dp"
+        android:padding="8dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:background="@drawable/rounded_bg_dark"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        android:visibility="gone" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -14,6 +14,7 @@ import com.statussaver.app.data.database.StatusSource
 import com.statussaver.app.data.repository.StatusRepository
 import com.statussaver.app.databinding.FragmentStatusListBinding
 import com.statussaver.app.ui.FullScreenViewActivity
+import com.statussaver.app.ui.MediaItem
 import com.statussaver.app.ui.StatusAdapter
 import com.statussaver.app.viewmodel.StatusViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -192,7 +193,17 @@ class StatusListFragment : Fragment() {
     }
     
     private fun openFullScreen(item: StatusAdapter.StatusItem) {
+        // Convert current list to MediaItem for swipe navigation
+        val currentList = adapter.currentList
+        val mediaItems = ArrayList(currentList.map { MediaItem.fromStatusItem(it) })
+        val currentPosition = currentList.indexOfFirst { it.filename == item.filename && it.source == item.source }
+        
         val intent = Intent(requireContext(), FullScreenViewActivity::class.java).apply {
+            // Pass full list for swipe navigation
+            putParcelableArrayListExtra(FullScreenViewActivity.EXTRA_MEDIA_ITEMS, mediaItems)
+            putExtra(FullScreenViewActivity.EXTRA_CURRENT_POSITION, if (currentPosition >= 0) currentPosition else 0)
+            
+            // Keep legacy extras for backward compatibility
             putExtra(FullScreenViewActivity.EXTRA_FILE_PATH, item.path)
             putExtra(FullScreenViewActivity.EXTRA_FILE_URI, item.uri)
             putExtra(FullScreenViewActivity.EXTRA_FILE_NAME, item.filename)

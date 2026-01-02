@@ -74,25 +74,27 @@
 
         </LinearLayout>
 
-        <!-- Download/Checkmark Button Container - SMALLER SIZE -->
+        <!-- Download/Checkmark Button Container -->
         <FrameLayout
             android:id="@+id/downloadContainer"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
-            android:layout_margin="6dp">
+            android:layout_margin="6dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
 
-            <!-- Download Button - Smaller -->
+            <!-- Download Button - Mini FAB -->
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/btnDownload"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:src="@drawable/ic_download"
                 android:scaleType="center"
                 android:contentDescription="Download"
                 app:fabSize="mini"
-                app:fabCustomSize="32dp"
-                app:maxImageSize="16dp"
+                app:fabCustomSize="36dp"
+                app:maxImageSize="18dp"
                 app:elevation="2dp"
                 app:backgroundTint="@color/app_green"
                 app:tint="@android:color/white" />
@@ -100,10 +102,10 @@
             <!-- Double Checkmark (Saved Indicator) -->
             <ImageView
                 android:id="@+id/checkMark"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:src="@drawable/ic_double_check"
-                android:padding="6dp"
+                android:padding="8dp"
                 android:background="@drawable/circle_bg_saved"
                 android:contentDescription="Saved"
                 android:visibility="gone" />
