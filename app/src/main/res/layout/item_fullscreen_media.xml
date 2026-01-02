@@ -29,22 +29,21 @@
         android:layout_height="match_parent"
         android:visibility="gone" />
 
-    <!-- Left seek indicator (Rewind) -->
+    <!-- Left seek indicator (Rewind) - YouTube style -->
     <LinearLayout
         android:id="@+id/leftSeekIndicator"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
         android:layout_gravity="center_vertical|start"
-        android:layout_marginStart="48dp"
+        android:layout_marginStart="24dp"
         android:orientation="vertical"
         android:gravity="center"
-        android:padding="16dp"
         android:background="@drawable/ripple_circle_dark"
         android:visibility="gone">
 
         <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:src="@drawable/ic_replay_3"
             app:tint="@android:color/white"
             android:contentDescription="Rewind 3 seconds" />
@@ -54,27 +53,27 @@
             android:layout_height="wrap_content"
             android:text="3 seconds"
             android:textColor="@android:color/white"
-            android:textSize="12sp"
+            android:textSize="13sp"
+            android:textStyle="bold"
             android:layout_marginTop="4dp" />
 
     </LinearLayout>
 
-    <!-- Right seek indicator (Forward) -->
+    <!-- Right seek indicator (Forward) - YouTube style -->
     <LinearLayout
         android:id="@+id/rightSeekIndicator"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
         android:layout_gravity="center_vertical|end"
-        android:layout_marginEnd="48dp"
+        android:layout_marginEnd="24dp"
         android:orientation="vertical"
         android:gravity="center"
-        android:padding="16dp"
         android:background="@drawable/ripple_circle_dark"
         android:visibility="gone">
 
         <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:src="@drawable/ic_forward_3"
             app:tint="@android:color/white"
             android:contentDescription="Forward 3 seconds" />
@@ -84,12 +83,13 @@
             android:layout_height="wrap_content"
             android:text="3 seconds"
             android:textColor="@android:color/white"
-            android:textSize="12sp"
+            android:textSize="13sp"
+            android:textStyle="bold"
             android:layout_marginTop="4dp" />
 
     </LinearLayout>
 
-    <!-- Speed indicator -->
+    <!-- Speed indicator (for long-press) -->
     <TextView
         android:id="@+id/speedIndicator"
         android:layout_width="wrap_content"
@@ -97,13 +97,106 @@
         android:layout_gravity="top|center_horizontal"
         android:layout_marginTop="80dp"
         android:padding="12dp"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
         android:background="@drawable/rounded_bg_dark"
         android:textColor="@android:color/white"
-        android:textSize="16sp"
+        android:textSize="18sp"
         android:textStyle="bold"
         android:visibility="gone"
-        android:text="1.0x" />
+        android:text="2x ▶▶" />
+
+    <!-- Custom Video Controls -->
+    <LinearLayout
+        android:id="@+id/customControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:background="@drawable/gradient_bottom_dark"
+        android:padding="12dp">
+
+        <!-- SeekBar -->
+        <SeekBar
+            android:id="@+id/videoSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:progressTint="@color/app_green"
+            android:thumbTint="@color/app_green"
+            android:progressBackgroundTint="#80FFFFFF" />
+
+        <!-- Time and Controls Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Current Time -->
+            <TextView
+                android:id="@+id/txtCurrentTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0:00"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+
+            <!-- Spacer -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Rewind 3s Button -->
+            <ImageButton
+                android:id="@+id/btnRewind"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_replay_3"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="@android:color/white"
+                android:contentDescription="Rewind 3 seconds" />
+
+            <!-- Play/Pause Button -->
+            <ImageButton
+                android:id="@+id/btnPlayPause"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:src="@drawable/ic_pause"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="@android:color/white"
+                android:contentDescription="Play/Pause" />
+
+            <!-- Forward 3s Button -->
+            <ImageButton
+                android:id="@+id/btnForward"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_forward_3"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="@android:color/white"
+                android:contentDescription="Forward 3 seconds" />
+
+            <!-- Spacer -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Duration -->
+            <TextView
+                android:id="@+id/txtDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0:00"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 
 </FrameLayout>

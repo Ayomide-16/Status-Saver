@@ -7,12 +7,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.MediaController
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.VideoView
 import androidx.core.content.FileProvider
@@ -69,11 +70,23 @@ class FullScreenMediaAdapter(
         private val leftSeekIndicator: LinearLayout = itemView.findViewById(R.id.leftSeekIndicator)
         private val rightSeekIndicator: LinearLayout = itemView.findViewById(R.id.rightSeekIndicator)
         private val speedIndicator: TextView = itemView.findViewById(R.id.speedIndicator)
+        
+        // Custom controls
+        private val customControls: View = itemView.findViewById(R.id.customControls)
+        private val btnRewind: ImageButton = itemView.findViewById(R.id.btnRewind)
+        private val btnPlayPause: ImageButton = itemView.findViewById(R.id.btnPlayPause)
+        private val btnForward: ImageButton = itemView.findViewById(R.id.btnForward)
+        private val seekBar: SeekBar = itemView.findViewById(R.id.videoSeekBar)
+        private val txtCurrentTime: TextView = itemView.findViewById(R.id.txtCurrentTime)
+        private val txtDuration: TextView = itemView.findViewById(R.id.txtDuration)
 
         private var gestureHandler: VideoGestureHandler? = null
-        private var mediaController: MediaController? = null
         private val handler = Handler(Looper.getMainLooper())
         private var mediaPlayer: MediaPlayer? = null
+        private var isReverseMode = false
+        private var reverseHandler: Handler? = null
+        private var reverseRunnable: Runnable? = null
+        private var controlsVisible = true
 
         @SuppressLint("ClickableViewAccessibility")
         fun bind(item: MediaItem) {
@@ -88,6 +101,7 @@ class FullScreenMediaAdapter(
             imageView.visibility = View.VISIBLE
             videoView.visibility = View.GONE
             touchOverlay.visibility = View.GONE
+            customControls.visibility = View.GONE
             hideAllIndicators()
 
             when (item.source) {
@@ -107,6 +121,7 @@ class FullScreenMediaAdapter(
             imageView.visibility = View.GONE
             videoView.visibility = View.VISIBLE
             touchOverlay.visibility = View.VISIBLE
+            customControls.visibility = View.VISIBLE
             hideAllIndicators()
 
             val uri = when (item.source) {
@@ -122,18 +137,19 @@ class FullScreenMediaAdapter(
             }
 
             videoView.setVideoURI(uri)
-
-            // Setup media controller
-            mediaController = MediaController(itemView.context).apply {
-                setAnchorView(videoView)
-            }
-            videoView.setMediaController(mediaController)
+            // Remove default MediaController - using custom controls
+            videoView.setMediaController(null)
 
             videoView.setOnPreparedListener { mp ->
                 mediaPlayer = mp
                 currentMediaPlayer = mp
                 mp.isLooping = false
                 videoView.start()
+                
+                // Setup custom controls
+                setupCustomControls()
+                updatePlayPauseButton()
+                startSeekBarUpdates()
             }
 
             currentVideoView = videoView
@@ -157,25 +173,26 @@ class FullScreenMediaAdapter(
                         showSeekIndicator(forward)
                     }
 
-                    override fun onSpeedChange(speed: Float) {
-                        setPlaybackSpeed(speed)
-                        showSpeedIndicator(speed)
+                    override fun onLongPressStart(isRightSide: Boolean) {
+                        if (isRightSide) {
+                            // 2x forward speed
+                            setPlaybackSpeed(2.0f)
+                            showSpeedIndicator("2x ▶▶")
+                        } else {
+                            // Reverse playback simulation
+                            startReversePlayback()
+                            showSpeedIndicator("◀◀ 2x")
+                        }
                     }
 
-                    override fun onSpeedReset() {
+                    override fun onLongPressEnd() {
+                        stopReversePlayback()
                         setPlaybackSpeed(1.0f)
                         hideSpeedIndicator()
                     }
 
                     override fun onSingleTap() {
-                        // Toggle media controller visibility
-                        mediaController?.let {
-                            if (it.isShowing) {
-                                it.hide()
-                            } else {
-                                it.show(3000)
-                            }
-                        }
+                        toggleControls()
                     }
                 }
             )
@@ -183,6 +200,89 @@ class FullScreenMediaAdapter(
             touchOverlay.setOnTouchListener { _, event ->
                 gestureHandler?.onTouchEvent(event) ?: false
             }
+        }
+        
+        private fun setupCustomControls() {
+            val duration = videoView.duration
+            seekBar.max = duration
+            txtDuration.text = formatTime(duration)
+            
+            // Rewind button - 3 seconds
+            btnRewind.setOnClickListener {
+                val newPos = maxOf(videoView.currentPosition - 3000, 0)
+                videoView.seekTo(newPos)
+                showSeekIndicator(false)
+            }
+            
+            // Forward button - 3 seconds
+            btnForward.setOnClickListener {
+                val newPos = minOf(videoView.currentPosition + 3000, videoView.duration)
+                videoView.seekTo(newPos)
+                showSeekIndicator(true)
+            }
+            
+            // Play/Pause button
+            btnPlayPause.setOnClickListener {
+                if (videoView.isPlaying) {
+                    videoView.pause()
+                } else {
+                    videoView.start()
+                }
+                updatePlayPauseButton()
+            }
+            
+            // SeekBar
+            seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (fromUser) {
+                        videoView.seekTo(progress)
+                        txtCurrentTime.text = formatTime(progress)
+                    }
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        }
+        
+        private fun startSeekBarUpdates() {
+            val updateRunnable = object : Runnable {
+                override fun run() {
+                    if (videoView.isPlaying) {
+                        seekBar.progress = videoView.currentPosition
+                        txtCurrentTime.text = formatTime(videoView.currentPosition)
+                    }
+                    handler.postDelayed(this, 200)
+                }
+            }
+            handler.post(updateRunnable)
+        }
+        
+        private fun updatePlayPauseButton() {
+            val iconRes = if (videoView.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+            btnPlayPause.setImageResource(iconRes)
+        }
+        
+        private fun toggleControls() {
+            controlsVisible = !controlsVisible
+            val targetAlpha = if (controlsVisible) 1f else 0f
+            customControls.animate()
+                .alpha(targetAlpha)
+                .setDuration(200)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withStartAction { 
+                    if (controlsVisible) customControls.visibility = View.VISIBLE 
+                }
+                .withEndAction {
+                    if (!controlsVisible) customControls.visibility = View.GONE
+                }
+                .start()
+        }
+        
+        private fun formatTime(ms: Int): String {
+            val totalSeconds = ms / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            return String.format("%d:%02d", minutes, seconds)
         }
 
         private fun setPlaybackSpeed(speed: Float) {
@@ -198,25 +298,75 @@ class FullScreenMediaAdapter(
                 }
             }
         }
+        
+        private fun startReversePlayback() {
+            isReverseMode = true
+            videoView.pause()
+            
+            reverseHandler = Handler(Looper.getMainLooper())
+            reverseRunnable = object : Runnable {
+                override fun run() {
+                    if (isReverseMode && videoView.currentPosition > 0) {
+                        // Seek backward by ~100ms for smooth reverse effect
+                        val newPos = maxOf(videoView.currentPosition - 200, 0)
+                        videoView.seekTo(newPos)
+                        reverseHandler?.postDelayed(this, 50)
+                    }
+                }
+            }
+            reverseHandler?.post(reverseRunnable!!)
+        }
+        
+        private fun stopReversePlayback() {
+            isReverseMode = false
+            reverseRunnable?.let { reverseHandler?.removeCallbacks(it) }
+            reverseHandler = null
+            reverseRunnable = null
+            
+            // Resume normal playback
+            if (!videoView.isPlaying) {
+                videoView.start()
+            }
+        }
 
         private fun showSeekIndicator(forward: Boolean) {
             val indicator = if (forward) rightSeekIndicator else leftSeekIndicator
-            indicator.visibility = View.VISIBLE
-            indicator.alpha = 1f
+            val otherIndicator = if (forward) leftSeekIndicator else rightSeekIndicator
             
-            handler.removeCallbacksAndMessages(null)
-            handler.postDelayed({
-                indicator.animate()
-                    .alpha(0f)
-                    .setDuration(200)
-                    .withEndAction { indicator.visibility = View.GONE }
-                    .start()
-            }, 500)
+            // Hide the other indicator
+            otherIndicator.visibility = View.GONE
+            
+            // Show with animation
+            indicator.visibility = View.VISIBLE
+            indicator.alpha = 0f
+            indicator.scaleX = 0.5f
+            indicator.scaleY = 0.5f
+            
+            indicator.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(150)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    // Fade out after showing
+                    handler.postDelayed({
+                        indicator.animate()
+                            .alpha(0f)
+                            .scaleX(0.8f)
+                            .scaleY(0.8f)
+                            .setDuration(200)
+                            .withEndAction { indicator.visibility = View.GONE }
+                            .start()
+                    }, 400)
+                }
+                .start()
         }
 
-        private fun showSpeedIndicator(speed: Float) {
-            speedIndicator.text = "${speed}x"
+        private fun showSpeedIndicator(text: String) {
+            speedIndicator.text = text
             speedIndicator.visibility = View.VISIBLE
+            speedIndicator.alpha = 1f
         }
 
         private fun hideSpeedIndicator() {
@@ -240,8 +390,8 @@ class FullScreenMediaAdapter(
             gestureHandler?.cleanup()
             gestureHandler = null
             handler.removeCallbacksAndMessages(null)
+            stopReversePlayback()
             videoView.stopPlayback()
-            mediaController = null
             mediaPlayer = null
         }
     }
