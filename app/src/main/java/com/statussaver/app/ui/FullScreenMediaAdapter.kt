@@ -31,7 +31,8 @@ import java.io.File
  */
 class FullScreenMediaAdapter(
     private val items: List<MediaItem>,
-    private val onDownloadStateChanged: (Int, Boolean) -> Unit
+    private val onDownloadStateChanged: (Int, Boolean) -> Unit,
+    private val onControlsVisibilityChanged: (Boolean) -> Unit = {}
 ) : RecyclerView.Adapter<FullScreenMediaAdapter.MediaViewHolder>() {
 
     private var currentVideoView: VideoView? = null
@@ -280,6 +281,9 @@ class FullScreenMediaAdapter(
                     if (!controlsVisible) customControls.visibility = View.GONE
                 }
                 .start()
+            
+            // Notify Activity to sync FAB visibility
+            onControlsVisibilityChanged(controlsVisible)
         }
         
         private fun formatTime(ms: Int): String {

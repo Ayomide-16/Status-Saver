@@ -3,7 +3,10 @@ package com.statussaver.app.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.ImageView
 import android.widget.MediaController
 import android.widget.TextView
@@ -37,6 +40,8 @@ class FullScreenViewActivity : AppCompatActivity() {
         // New extras for swipe navigation
         const val EXTRA_MEDIA_ITEMS = "media_items"
         const val EXTRA_CURRENT_POSITION = "current_position"
+        
+        private const val FAB_AUTO_HIDE_DELAY_MS = 2000L
     }
 
     // Single item mode properties
@@ -61,6 +66,11 @@ class FullScreenViewActivity : AppCompatActivity() {
 
     private lateinit var repository: StatusRepository
     private var adapter: FullScreenMediaAdapter? = null
+    
+    // Auto-hide mechanism
+    private val hideHandler = Handler(Looper.getMainLooper())
+    private var fabsVisible = true
+    private val hideRunnable = Runnable { hideFabs() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,10 +108,21 @@ class FullScreenViewActivity : AppCompatActivity() {
         imageView.visibility = View.GONE
         videoView.visibility = View.GONE
 
-        adapter = FullScreenMediaAdapter(items) { position, downloaded ->
-            items[position].isDownloaded = downloaded
-            updateDownloadButton()
-        }
+        adapter = FullScreenMediaAdapter(
+            items = items,
+            onDownloadStateChanged = { position, downloaded ->
+                items[position].isDownloaded = downloaded
+                updateDownloadButton()
+            },
+            onControlsVisibilityChanged = { visible ->
+                // Sync FAB visibility with video controls
+                if (visible) {
+                    showFabs()
+                } else {
+                    hideFabs()
+                }
+            }
+        )
 
         viewPager.adapter = adapter
         viewPager.setCurrentItem(currentPosition, false)
@@ -122,10 +143,77 @@ class FullScreenViewActivity : AppCompatActivity() {
                 currentPosition = position
                 updatePageIndicator()
                 updateDownloadButton()
+                
+                // Show FABs when swiping and schedule auto-hide for videos
+                showFabs()
+                scheduleAutoHideIfVideo()
             }
         })
 
         updateDownloadButton()
+        
+        // Schedule auto-hide if starting on a video
+        scheduleAutoHideIfVideo()
+    }
+    
+    private fun scheduleAutoHideIfVideo() {
+        val currentItem = getCurrentItem()
+        if (currentItem?.fileType == FileType.VIDEO) {
+            hideHandler.removeCallbacks(hideRunnable)
+            hideHandler.postDelayed(hideRunnable, FAB_AUTO_HIDE_DELAY_MS)
+        }
+    }
+    
+    private fun showFabs() {
+        if (!fabsVisible) {
+            fabsVisible = true
+            fabDownload.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(200)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withStartAction { fabDownload.visibility = View.VISIBLE }
+                .start()
+            fabShare.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(200)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withStartAction { fabShare.visibility = View.VISIBLE }
+                .start()
+            pageIndicator.animate()
+                .alpha(1f)
+                .setDuration(200)
+                .start()
+        }
+        // Reschedule hide
+        hideHandler.removeCallbacks(hideRunnable)
+    }
+    
+    private fun hideFabs() {
+        // Only hide for videos
+        val currentItem = getCurrentItem()
+        if (currentItem?.fileType == FileType.VIDEO) {
+            fabsVisible = false
+            fabDownload.animate()
+                .alpha(0f)
+                .translationY(100f)
+                .setDuration(200)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction { fabDownload.visibility = View.GONE }
+                .start()
+            fabShare.animate()
+                .alpha(0f)
+                .translationY(100f)
+                .setDuration(200)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction { fabShare.visibility = View.GONE }
+                .start()
+            pageIndicator.animate()
+                .alpha(0f)
+                .setDuration(200)
+                .start()
+        }
     }
 
     private fun setupSingleItemMode() {
@@ -200,12 +288,14 @@ class FullScreenViewActivity : AppCompatActivity() {
 
     private fun setupButtons() {
         fabDownload.setOnClickListener {
+            showFabs() // Keep visible when interacting
             if (!getCurrentDownloadState()) {
                 downloadStatus()
             }
         }
 
         fabShare.setOnClickListener {
+            showFabs() // Keep visible when interacting
             shareStatus()
         }
     }
@@ -292,6 +382,7 @@ class FullScreenViewActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        hideHandler.removeCallbacks(hideRunnable)
         if (mediaItems != null) {
             adapter?.pauseCurrentVideo()
         } else if (fileType == FileType.VIDEO) {
@@ -301,6 +392,7 @@ class FullScreenViewActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        hideHandler.removeCallbacksAndMessages(null)
         adapter?.releaseCurrentVideo()
     }
 }
