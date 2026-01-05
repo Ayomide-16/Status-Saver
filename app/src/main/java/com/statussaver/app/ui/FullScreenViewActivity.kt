@@ -165,6 +165,8 @@ class FullScreenViewActivity : AppCompatActivity() {
     }
     
     private fun showFabs() {
+        hideHandler.removeCallbacks(hideRunnable)
+        
         if (!fabsVisible) {
             fabsVisible = true
             fabDownload.animate()
@@ -186,8 +188,9 @@ class FullScreenViewActivity : AppCompatActivity() {
                 .setDuration(200)
                 .start()
         }
-        // Reschedule hide
-        hideHandler.removeCallbacks(hideRunnable)
+        
+        // Always reschedule auto-hide for videos
+        scheduleAutoHideIfVideo()
     }
     
     private fun hideFabs() {

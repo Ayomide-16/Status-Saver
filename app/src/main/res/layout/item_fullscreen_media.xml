@@ -5,8 +5,8 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <!-- Image View for images -->
-    <ImageView
+    <!-- PhotoView for images with pinch-to-zoom -->
+    <com.github.chrisbanes.photoview.PhotoView
         android:id="@+id/mediaImage"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

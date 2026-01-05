@@ -12,6 +12,7 @@ import android.view.View
  * Supports:
  * - Double-tap left: rewind 3 seconds
  * - Double-tap right: forward 3 seconds
+ * - Double-tap center: toggle play/pause
  * - Long-press left: reverse at 2x speed
  * - Long-press right: forward at 2x speed
  */
@@ -23,6 +24,7 @@ class VideoGestureHandler(
     
     interface GestureListener {
         fun onDoubleTapSeek(forward: Boolean) // true = forward, false = rewind
+        fun onDoubleTapCenter() // toggle play/pause
         fun onLongPressStart(isRightSide: Boolean) // true = 2x forward, false = reverse
         fun onLongPressEnd()
         fun onSingleTap()
@@ -65,7 +67,7 @@ class VideoGestureHandler(
             when (zone) {
                 Zone.LEFT -> listener.onDoubleTapSeek(false) // Rewind 3 seconds
                 Zone.RIGHT -> listener.onDoubleTapSeek(true) // Forward 3 seconds
-                Zone.CENTER -> listener.onSingleTap() // Toggle controls
+                Zone.CENTER -> listener.onDoubleTapCenter() // Toggle play/pause
             }
             return true
         }

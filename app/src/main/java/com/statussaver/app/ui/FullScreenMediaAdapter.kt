@@ -12,7 +12,6 @@ import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -20,6 +19,7 @@ import android.widget.VideoView
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import com.github.chrisbanes.photoview.PhotoView
 import com.statussaver.app.R
 import com.statussaver.app.data.database.FileType
 import com.statussaver.app.data.database.StatusSource
@@ -66,7 +66,7 @@ class FullScreenMediaAdapter(
     }
 
     inner class MediaViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val imageView: ImageView = itemView.findViewById(R.id.mediaImage)
+        private val imageView: PhotoView = itemView.findViewById(R.id.mediaImage)
         private val videoView: VideoView = itemView.findViewById(R.id.mediaVideo)
         private val touchOverlay: View = itemView.findViewById(R.id.touchOverlay)
         private val leftSeekIndicator: LinearLayout = itemView.findViewById(R.id.leftSeekIndicator)
@@ -182,6 +182,10 @@ class FullScreenMediaAdapter(
                         stopSpeedControl()
                     }
 
+                    override fun onDoubleTapCenter() {
+                        togglePlayPause()
+                    }
+
                     override fun onSingleTap() {
                         toggleControls()
                     }
@@ -265,6 +269,15 @@ class FullScreenMediaAdapter(
         private fun updatePlayPauseButton() {
             val iconRes = if (videoView.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
             btnPlayPause.setImageResource(iconRes)
+        }
+        
+        private fun togglePlayPause() {
+            if (videoView.isPlaying) {
+                videoView.pause()
+            } else {
+                videoView.start()
+            }
+            updatePlayPauseButton()
         }
         
         private fun toggleControls() {

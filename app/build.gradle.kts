@@ -12,13 +12,25 @@ android {
         applicationId = "com.statussaver.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -73,6 +85,9 @@ dependencies {
     // Fragment and ViewPager2
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("androidx.viewpager2:viewpager2:1.0.0")
+    
+    // PhotoView for pinch-to-zoom
+    implementation("com.github.chrisbanes:PhotoView:2.3.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
