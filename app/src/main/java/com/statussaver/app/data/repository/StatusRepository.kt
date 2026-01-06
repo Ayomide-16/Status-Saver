@@ -1,7 +1,13 @@
 package com.statussaver.app.data.repository
 
+import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.media.MediaScannerConnection
+import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.LiveData
@@ -11,6 +17,7 @@ import com.statussaver.app.util.SAFHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 
 class StatusRepository(private val context: Context) {
@@ -20,6 +27,7 @@ class StatusRepository(private val context: Context) {
     
     companion object {
         private const val TAG = "StatusRepository"
+        private const val PUBLIC_FOLDER_NAME = "SA Status Saver"
     }
     
     // ========== Directory Management ==========
@@ -30,14 +38,123 @@ class StatusRepository(private val context: Context) {
         return dir
     }
     
+    /**
+     * Get the public saved directory visible in gallery apps.
+     * Creates "SA Status Saver" folder in device root storage.
+     */
     fun getSavedDirectory(): File {
-        val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), Constants.SAVED_FOLDER_NAME)
+        val dir = File(Environment.getExternalStorageDirectory(), PUBLIC_FOLDER_NAME)
+        if (!dir.exists()) {
+            dir.mkdirs()
+            // Create a .nomedia file marker is NOT added so files appear in gallery
+        }
+        return dir
+    }
+    
+    /**
+     * Get subdirectory for images within SA Status Saver folder
+     */
+    fun getSavedImagesDirectory(): File {
+        val dir = File(getSavedDirectory(), "Images")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+    
+    /**
+     * Get subdirectory for videos within SA Status Saver folder
+     */
+    fun getSavedVideosDirectory(): File {
+        val dir = File(getSavedDirectory(), "Videos")
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
     
     fun getWhatsAppStatusUri(): String {
         return SAFHelper.getStoredUri(context)?.toString() ?: "Not set"
+    }
+    
+    // ========== Media Scanner ==========
+    
+    /**
+     * Scan the saved file so it appears in gallery immediately
+     */
+    private fun scanMediaFile(file: File) {
+        try {
+            MediaScannerConnection.scanFile(
+                context,
+                arrayOf(file.absolutePath),
+                null
+            ) { path, uri ->
+                Log.d(TAG, "Scanned file: $path -> $uri")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scanning media file: ${e.message}")
+        }
+    }
+    
+    /**
+     * For Android 10+, use MediaStore to save files properly
+     */
+    private suspend fun saveToMediaStore(
+        inputFile: File,
+        filename: String,
+        isVideo: Boolean
+    ): String? = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val mimeType = if (isVideo) "video/*" else "image/*"
+                val relativePath = if (isVideo) {
+                    Environment.DIRECTORY_MOVIES + "/$PUBLIC_FOLDER_NAME"
+                } else {
+                    Environment.DIRECTORY_PICTURES + "/$PUBLIC_FOLDER_NAME"
+                }
+                
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                }
+                
+                val collection = if (isVideo) {
+                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                } else {
+                    MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                }
+                
+                val uri = context.contentResolver.insert(collection, contentValues)
+                    ?: return@withContext null
+                
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    FileInputStream(inputFile).use { input ->
+                        input.copyTo(output)
+                    }
+                }
+                
+                // Return the file path from MediaStore
+                val path = getFilePathFromUri(uri, isVideo)
+                Log.d(TAG, "Saved via MediaStore: $filename -> $path")
+                return@withContext path
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving to MediaStore: ${e.message}")
+                return@withContext null
+            }
+        }
+        return@withContext null
+    }
+    
+    private fun getFilePathFromUri(uri: Uri, isVideo: Boolean): String? {
+        try {
+            val projection = arrayOf(MediaStore.MediaColumns.DATA)
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val columnIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
+                    return cursor.getString(columnIndex)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting file path from uri: ${e.message}")
+        }
+        return uri.toString()
     }
     
     // ========== Live Status (from WhatsApp folder) ==========
@@ -155,14 +272,15 @@ class StatusRepository(private val context: Context) {
     }
     
     /**
-     * Save a live status (from SAF) to permanent storage
+     * Save a live status (from SAF) to public SA Status Saver folder
      */
     suspend fun saveStatus(filename: String, sourceUri: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val savedDir = getSavedDirectory()
+            val isVideo = SAFHelper.isVideoFile(filename)
+            val savedDir = if (isVideo) getSavedVideosDirectory() else getSavedImagesDirectory()
             val destFile = File(savedDir, filename)
             
-            // Copy from URI
+            // Copy from URI to temp location first
             val uri = android.net.Uri.parse(sourceUri)
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(destFile).use { output ->
@@ -178,7 +296,10 @@ class StatusRepository(private val context: Context) {
                 return@withContext false
             }
             
-            val fileType = if (SAFHelper.isVideoFile(filename)) FileType.VIDEO else FileType.IMAGE
+            // Scan the file so it appears in gallery
+            scanMediaFile(destFile)
+            
+            val fileType = if (isVideo) FileType.VIDEO else FileType.IMAGE
             
             // Add to saved statuses
             val status = StatusEntity(
@@ -209,11 +330,12 @@ class StatusRepository(private val context: Context) {
     }
     
     /**
-     * Save a cached status to permanent storage
+     * Save a cached status to public SA Status Saver folder
      */
     suspend fun saveCachedStatus(cachedStatus: StatusEntity): Boolean = withContext(Dispatchers.IO) {
         try {
-            val savedDir = getSavedDirectory()
+            val isVideo = cachedStatus.fileType == FileType.VIDEO
+            val savedDir = if (isVideo) getSavedVideosDirectory() else getSavedImagesDirectory()
             val sourceFile = File(cachedStatus.localPath)
             val destFile = File(savedDir, cachedStatus.filename)
             
@@ -223,6 +345,9 @@ class StatusRepository(private val context: Context) {
             }
             
             sourceFile.copyTo(destFile, overwrite = true)
+            
+            // Scan the file so it appears in gallery
+            scanMediaFile(destFile)
             
             // Add to saved statuses
             val status = cachedStatus.copy(
@@ -299,6 +424,8 @@ class StatusRepository(private val context: Context) {
             val file = File(status.localPath)
             if (file.exists()) {
                 file.delete()
+                // Notify gallery that file was deleted
+                scanMediaFile(file)
             }
             statusDao.deleteStatus(status)
             
