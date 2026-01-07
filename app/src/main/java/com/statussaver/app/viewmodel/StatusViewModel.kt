@@ -115,13 +115,13 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
             _isLoading.value = true
             try {
                 val success = if (source == StatusSource.CACHED) {
-                    // For cached files, we need to get the entity first
-                    val cachedStatuses = repository.getCachedStatuses().value
-                    val cachedStatus = cachedStatuses?.find { it.filename == filename }
+                    // For cached files, use direct query instead of LiveData.value
+                    val cachedStatus = repository.getCachedStatusByFilename(filename)
                     if (cachedStatus != null) {
                         repository.saveCachedStatus(cachedStatus)
                     } else {
-                        false
+                        // Fallback: try to save using the URI directly
+                        repository.saveStatus(filename, uri)
                     }
                 } else {
                     repository.saveStatus(filename, uri)

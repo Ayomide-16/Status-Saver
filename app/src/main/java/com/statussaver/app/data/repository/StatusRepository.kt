@@ -372,6 +372,13 @@ class StatusRepository(private val context: Context) {
         return statusDao.getStatusesBySourceAndType(StatusSource.CACHED, fileType)
     }
     
+    /**
+     * Get a cached status by filename (direct query, not LiveData)
+     */
+    suspend fun getCachedStatusByFilename(filename: String): StatusEntity? {
+        return statusDao.getStatusByFilenameAndSource(filename, StatusSource.CACHED)
+    }
+    
     suspend fun cacheStatus(documentFile: DocumentFile): StatusEntity? = withContext(Dispatchers.IO) {
         try {
             val filename = documentFile.name ?: return@withContext null

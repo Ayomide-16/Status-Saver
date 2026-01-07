@@ -26,6 +26,9 @@ interface StatusDao {
     @Query("SELECT EXISTS(SELECT 1 FROM statuses WHERE filename = :filename AND source = :source)")
     suspend fun existsByFilenameAndSource(filename: String, source: StatusSource): Boolean
     
+    @Query("SELECT * FROM statuses WHERE filename = :filename AND source = :source LIMIT 1")
+    suspend fun getStatusByFilenameAndSource(filename: String, source: StatusSource): StatusEntity?
+    
     @Delete
     suspend fun deleteStatus(status: StatusEntity)
     
