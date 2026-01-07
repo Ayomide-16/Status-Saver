@@ -7,10 +7,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.SeekBar
@@ -94,6 +96,15 @@ class FullScreenMediaAdapter(
         // Separate handlers for animations to avoid conflicts
         private val leftAnimHandler = Handler(Looper.getMainLooper())
         private val rightAnimHandler = Handler(Looper.getMainLooper())
+        
+        // Video zoom state
+        private var videoScaleFactor = 1.0f
+        private val minScale = 1.0f
+        private val maxScale = 3.0f
+        private var scaleGestureDetector: ScaleGestureDetector? = null
+        
+        // Controls position offset for FABs (in dp)
+        private val controlsOffsetForFabs = 80f
 
         @SuppressLint("ClickableViewAccessibility")
         fun bind(item: MediaItem) {
@@ -191,8 +202,37 @@ class FullScreenMediaAdapter(
                     }
                 }
             )
+            
+            // Setup scale gesture detector for video zoom
+            scaleGestureDetector = ScaleGestureDetector(
+                itemView.context,
+                object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    override fun onScale(detector: ScaleGestureDetector): Boolean {
+                        videoScaleFactor *= detector.scaleFactor
+                        videoScaleFactor = videoScaleFactor.coerceIn(minScale, maxScale)
+                        
+                        videoView.scaleX = videoScaleFactor
+                        videoView.scaleY = videoScaleFactor
+                        return true
+                    }
+                    
+                    override fun onScaleEnd(detector: ScaleGestureDetector) {
+                        // Snap back to 1.0 if very close
+                        if (videoScaleFactor < 1.1f) {
+                            videoView.animate()
+                                .scaleX(1.0f)
+                                .scaleY(1.0f)
+                                .setDuration(200)
+                                .start()
+                            videoScaleFactor = 1.0f
+                        }
+                    }
+                }
+            )
 
             touchOverlay.setOnTouchListener { _, event ->
+                // Let scale gesture detector handle pinch gestures first
+                scaleGestureDetector?.onTouchEvent(event)
                 gestureHandler?.onTouchEvent(event) ?: false
             }
         }
@@ -283,8 +323,17 @@ class FullScreenMediaAdapter(
         private fun toggleControls() {
             controlsVisible = !controlsVisible
             val targetAlpha = if (controlsVisible) 1f else 0f
+            
+            // Convert dp to pixels for the offset
+            val density = itemView.context.resources.displayMetrics.density
+            val offsetPx = controlsOffsetForFabs * density
+            
+            // When controls are visible, move them up to avoid FAB overlap
+            val targetTranslationY = if (controlsVisible) -offsetPx else 0f
+            
             customControls.animate()
                 .alpha(targetAlpha)
+                .translationY(targetTranslationY)
                 .setDuration(200)
                 .setInterpolator(AccelerateDecelerateInterpolator())
                 .withStartAction { 
