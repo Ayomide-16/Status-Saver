@@ -2,8 +2,12 @@ package com.statussaver.app.util
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 
 object PermissionHelper {
@@ -60,6 +64,60 @@ object PermissionHelper {
             ) == PackageManager.PERMISSION_GRANTED
         } else {
             true // Not needed for older versions
+        }
+    }
+    
+    /**
+     * Check if the app has All Files Access permission (Android 11+)
+     * This is required to write to public storage directories
+     */
+    fun hasAllFilesAccess(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            true // Not needed for older versions
+        }
+    }
+    
+    /**
+     * Check if app needs to request All Files Access
+     */
+    fun needsAllFilesAccess(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()
+    }
+    
+    /**
+     * Get the intent to open All Files Access settings
+     */
+    fun getAllFilesAccessIntent(context: Context): Intent {
+        return Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+    }
+    
+    /**
+     * Check if app can write to external storage
+     * On Android 9 and below: check WRITE_EXTERNAL_STORAGE
+     * On Android 10: Use requestLegacyExternalStorage
+     * On Android 11+: Check MANAGE_EXTERNAL_STORAGE
+     */
+    fun canWriteToExternalStorage(context: Context): Boolean {
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                Environment.isExternalStorageManager()
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                // Android 10 uses scoped storage but requestLegacyExternalStorage="true" 
+                // should allow writing
+                true
+            }
+            else -> {
+                // Android 9 and below
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            }
         }
     }
 }
