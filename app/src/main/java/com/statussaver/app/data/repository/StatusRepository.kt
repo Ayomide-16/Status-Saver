@@ -104,8 +104,11 @@ class StatusRepository(private val context: Context) {
     ): String? = withContext(Dispatchers.IO) {
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                Log.d(TAG, "MediaStore: Skipping - Android < Q")
                 return@withContext null
             }
+            
+            Log.d(TAG, "MediaStore: Starting save for $filename from $inputUri")
             
             val mimeType = if (isVideo) {
                 getMimeType(filename, "video/mp4")
@@ -118,6 +121,8 @@ class StatusRepository(private val context: Context) {
             } else {
                 Environment.DIRECTORY_PICTURES + "/$PUBLIC_FOLDER_NAME"
             }
+            
+            Log.d(TAG, "MediaStore: mimeType=$mimeType, relativePath=$relativePath")
             
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
@@ -135,14 +140,38 @@ class StatusRepository(private val context: Context) {
             }
             
             val insertUri = context.contentResolver.insert(collection, contentValues)
-                ?: return@withContext null
+            if (insertUri == null) {
+                Log.e(TAG, "MediaStore: Failed to create entry in MediaStore")
+                return@withContext null
+            }
             
-            // Copy content
-            context.contentResolver.openInputStream(inputUri)?.use { input ->
-                context.contentResolver.openOutputStream(insertUri)?.use { output ->
+            Log.d(TAG, "MediaStore: Created entry at $insertUri")
+            
+            // Open input stream from source
+            val inputStream = context.contentResolver.openInputStream(inputUri)
+            if (inputStream == null) {
+                Log.e(TAG, "MediaStore: Failed to open input stream from $inputUri")
+                // Clean up the created entry
+                context.contentResolver.delete(insertUri, null, null)
+                return@withContext null
+            }
+            
+            // Open output stream to destination
+            val outputStream = context.contentResolver.openOutputStream(insertUri)
+            if (outputStream == null) {
+                Log.e(TAG, "MediaStore: Failed to open output stream to $insertUri")
+                inputStream.close()
+                context.contentResolver.delete(insertUri, null, null)
+                return@withContext null
+            }
+            
+            // Copy data
+            val bytesCopied = inputStream.use { input ->
+                outputStream.use { output ->
                     input.copyTo(output)
                 }
             }
+            Log.d(TAG, "MediaStore: Copied $bytesCopied bytes")
             
             // Update IS_PENDING to 0 to make file visible
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -153,10 +182,10 @@ class StatusRepository(private val context: Context) {
             
             // Get actual file path
             val savedPath = getFilePathFromMediaStoreUri(insertUri)
-            Log.d(TAG, "Saved via MediaStore: $filename -> $savedPath")
-            return@withContext savedPath
+            Log.d(TAG, "MediaStore: Save complete. Path: $savedPath")
+            return@withContext savedPath ?: insertUri.toString()
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving via MediaStore: ${e.message}", e)
+            Log.e(TAG, "MediaStore: Error saving: ${e.message}", e)
             return@withContext null
         }
     }

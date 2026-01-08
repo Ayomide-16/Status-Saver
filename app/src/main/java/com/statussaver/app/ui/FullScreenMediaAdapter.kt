@@ -202,37 +202,11 @@ class FullScreenMediaAdapter(
                     }
                 }
             )
-            
-            // Setup scale gesture detector for video zoom
-            scaleGestureDetector = ScaleGestureDetector(
-                itemView.context,
-                object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                    override fun onScale(detector: ScaleGestureDetector): Boolean {
-                        videoScaleFactor *= detector.scaleFactor
-                        videoScaleFactor = videoScaleFactor.coerceIn(minScale, maxScale)
-                        
-                        videoView.scaleX = videoScaleFactor
-                        videoView.scaleY = videoScaleFactor
-                        return true
-                    }
-                    
-                    override fun onScaleEnd(detector: ScaleGestureDetector) {
-                        // Snap back to 1.0 if very close
-                        if (videoScaleFactor < 1.1f) {
-                            videoView.animate()
-                                .scaleX(1.0f)
-                                .scaleY(1.0f)
-                                .setDuration(200)
-                                .start()
-                            videoScaleFactor = 1.0f
-                        }
-                    }
-                }
-            )
+
+            // Note: Video zoom disabled for smoother gesture handling
+            // VideoView doesn't support smooth scaling like PhotoView does for images
 
             touchOverlay.setOnTouchListener { _, event ->
-                // Let scale gesture detector handle pinch gestures first
-                scaleGestureDetector?.onTouchEvent(event)
                 gestureHandler?.onTouchEvent(event) ?: false
             }
         }
