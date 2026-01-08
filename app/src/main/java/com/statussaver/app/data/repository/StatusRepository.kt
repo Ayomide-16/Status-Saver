@@ -200,8 +200,12 @@ class StatusRepository(private val context: Context) {
     ): String? = withContext(Dispatchers.IO) {
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                Log.d(TAG, "FileMediaStore: Skipping - Android < Q")
                 return@withContext null
             }
+            
+            Log.d(TAG, "FileMediaStore: Starting save for $filename from ${sourceFile.absolutePath}")
+            Log.d(TAG, "FileMediaStore: Source file exists=${sourceFile.exists()}, size=${sourceFile.length()}")
             
             val mimeType = if (isVideo) {
                 getMimeType(filename, "video/mp4")
@@ -214,6 +218,8 @@ class StatusRepository(private val context: Context) {
             } else {
                 Environment.DIRECTORY_PICTURES + "/$PUBLIC_FOLDER_NAME"
             }
+            
+            Log.d(TAG, "FileMediaStore: mimeType=$mimeType, relativePath=$relativePath")
             
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
@@ -231,14 +237,27 @@ class StatusRepository(private val context: Context) {
             }
             
             val insertUri = context.contentResolver.insert(collection, contentValues)
-                ?: return@withContext null
+            if (insertUri == null) {
+                Log.e(TAG, "FileMediaStore: Failed to create entry in MediaStore")
+                return@withContext null
+            }
+            
+            Log.d(TAG, "FileMediaStore: Created entry at $insertUri")
             
             // Copy content from file
-            FileInputStream(sourceFile).use { input ->
-                context.contentResolver.openOutputStream(insertUri)?.use { output ->
+            val outputStream = context.contentResolver.openOutputStream(insertUri)
+            if (outputStream == null) {
+                Log.e(TAG, "FileMediaStore: Failed to open output stream")
+                context.contentResolver.delete(insertUri, null, null)
+                return@withContext null
+            }
+            
+            val bytesCopied = FileInputStream(sourceFile).use { input ->
+                outputStream.use { output ->
                     input.copyTo(output)
                 }
             }
+            Log.d(TAG, "FileMediaStore: Copied $bytesCopied bytes")
             
             // Update IS_PENDING to 0 to make file visible
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

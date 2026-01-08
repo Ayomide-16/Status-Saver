@@ -221,6 +221,8 @@ class FullScreenMediaAdapter(
                 maxOf(currentPos - seekAmount, 0)
             }
             
+            android.util.Log.d("VideoSeek", "performSeek: forward=$forward, currentPos=$currentPos, newPos=$newPos")
+            
             videoView.seekTo(newPos)
             showSeekAnimation(forward)
         }
