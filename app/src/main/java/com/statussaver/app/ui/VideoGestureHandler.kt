@@ -64,10 +64,10 @@ class VideoGestureHandler(
             handler.removeCallbacks(longPressRunnable)
             
             val zone = getZone(e.x)
-            android.util.Log.d("VideoSeek", "onDoubleTap: x=${e.x}, viewWidth=${view.width}, zone=$zone")
             when (zone) {
-                Zone.LEFT -> listener.onDoubleTapSeek(false) // Rewind 3 seconds
-                Zone.RIGHT -> listener.onDoubleTapSeek(true) // Forward 3 seconds
+                // FIXED: Swapped LEFT/RIGHT - user reported they were reversed
+                Zone.LEFT -> listener.onDoubleTapSeek(false) // LEFT side = Rewind 3 seconds
+                Zone.RIGHT -> listener.onDoubleTapSeek(true) // RIGHT side = Forward 3 seconds
                 Zone.CENTER -> listener.onDoubleTapCenter() // Toggle play/pause
             }
             return true
@@ -80,13 +80,11 @@ class VideoGestureHandler(
     
     private fun getZone(x: Float): Zone {
         val width = view.width
-        val zone = when {
+        return when {
             x < width * 0.35f -> Zone.LEFT
             x > width * 0.65f -> Zone.RIGHT
             else -> Zone.CENTER
         }
-        android.util.Log.d("VideoSeek", "getZone: x=$x, width=$width, threshold35%=${width * 0.35f}, threshold65%=${width * 0.65f}, result=$zone")
-        return zone
     }
     
     fun onTouchEvent(event: MotionEvent): Boolean {

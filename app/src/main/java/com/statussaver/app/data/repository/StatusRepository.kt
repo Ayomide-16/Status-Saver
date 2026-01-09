@@ -552,22 +552,35 @@ class StatusRepository(private val context: Context) {
         try {
             val sourceFile = File(cachedStatus.localPath)
             if (!sourceFile.exists()) {
-                Log.e(TAG, "Source file not found: ${cachedStatus.localPath}")
+                Log.e(TAG, "Cached source file not found: ${cachedStatus.localPath}")
+                return@withContext false
+            }
+            
+            if (!sourceFile.canRead()) {
+                Log.e(TAG, "Cached source file not readable: ${cachedStatus.localPath}")
                 return@withContext false
             }
             
             val isVideo = cachedStatus.fileType == FileType.VIDEO
             var savedPath: String? = null
             
-            // Try MediaStore first on Android 10+
+            // Use MediaStore on Android 10+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 savedPath = saveFileViaMediaStore(sourceFile, cachedStatus.filename, isVideo)
-            }
-            
-            // Fallback to direct save
-            if (savedPath == null) {
+                
+                if (savedPath != null) {
+                    Log.d(TAG, "Cached status saved via MediaStore: ${cachedStatus.filename} -> $savedPath")
+                } else {
+                    Log.e(TAG, "MediaStore save failed for cached: ${cachedStatus.filename}")
+                    return@withContext false
+                }
+            } else {
+                // Only use direct save on Android 9 and below
                 if (PermissionHelper.canWriteToExternalStorage(context)) {
                     savedPath = saveFileDirectly(sourceFile, cachedStatus.filename, isVideo)
+                } else {
+                    Log.e(TAG, "No write permission for direct save")
+                    return@withContext false
                 }
             }
             

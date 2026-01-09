@@ -202,11 +202,38 @@ class FullScreenMediaAdapter(
                     }
                 }
             )
-
-            // Note: Video zoom disabled for smoother gesture handling
-            // VideoView doesn't support smooth scaling like PhotoView does for images
+            
+            // Setup pinch-to-zoom for video
+            scaleGestureDetector = ScaleGestureDetector(
+                itemView.context,
+                object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    override fun onScale(detector: ScaleGestureDetector): Boolean {
+                        videoScaleFactor *= detector.scaleFactor
+                        videoScaleFactor = videoScaleFactor.coerceIn(minScale, maxScale)
+                        
+                        videoView.scaleX = videoScaleFactor
+                        videoView.scaleY = videoScaleFactor
+                        return true
+                    }
+                    
+                    override fun onScaleEnd(detector: ScaleGestureDetector) {
+                        // Snap back to 1.0 if close to minimum
+                        if (videoScaleFactor < 1.1f) {
+                            videoView.animate()
+                                .scaleX(1.0f)
+                                .scaleY(1.0f)
+                                .setDuration(200)
+                                .start()
+                            videoScaleFactor = 1.0f
+                        }
+                    }
+                }
+            )
 
             touchOverlay.setOnTouchListener { _, event ->
+                // Handle pinch zoom first
+                scaleGestureDetector?.onTouchEvent(event)
+                // Then handle other gestures
                 gestureHandler?.onTouchEvent(event) ?: false
             }
         }
@@ -220,8 +247,6 @@ class FullScreenMediaAdapter(
             } else {
                 maxOf(currentPos - seekAmount, 0)
             }
-            
-            android.util.Log.d("VideoSeek", "performSeek: forward=$forward, currentPos=$currentPos, newPos=$newPos, duration=${videoView.duration}")
             
             videoView.seekTo(newPos)
             showSeekAnimation(forward)
