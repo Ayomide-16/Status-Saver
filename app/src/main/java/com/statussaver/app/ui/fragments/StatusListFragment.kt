@@ -17,11 +17,6 @@ import com.statussaver.app.ui.FullScreenViewActivity
 import com.statussaver.app.ui.MediaItem
 import com.statussaver.app.ui.StatusAdapter
 import com.statussaver.app.viewmodel.StatusViewModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Fragment for displaying status list (Images or Videos)
@@ -223,42 +218,13 @@ class StatusListFragment : Fragment() {
         // Show loading
         Toast.makeText(requireContext(), "Saving...", Toast.LENGTH_SHORT).show()
         
-        // Perform download in background
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                val success = withContext(Dispatchers.IO) {
-                    when (item.source) {
-                        StatusSource.CACHED -> {
-                            // For cached files, copy from local cache path to saved folder
-                            val sourceFile = File(item.path)
-                            if (sourceFile.exists()) {
-                                val savedDir = repository.getSavedDirectory()
-                                val destFile = File(savedDir, item.filename)
-                                sourceFile.copyTo(destFile, overwrite = true)
-                                
-                                // Mark as downloaded in database
-                                repository.markAsDownloadedDirect(item.filename, item.uri, destFile.absolutePath)
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        else -> {
-                            // For live files, use URI-based saving
-                            repository.saveStatus(item.filename, item.uri)
-                        }
-                    }
-                }
-                
-                if (success) {
-                    Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
-                    // Refresh downloaded state
-                    viewModel.loadDownloadedFilenames()
-                } else {
-                    Toast.makeText(requireContext(), "Failed to save", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        // Use ViewModel's saveStatus which properly handles MediaStore on Android 10+
+        viewModel.saveStatus(item.filename, item.uri, item.source)
+        
+        // Observe the message for result
+        viewModel.message.observe(viewLifecycleOwner) { message ->
+            message?.let {
+                Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
             }
         }
     }
