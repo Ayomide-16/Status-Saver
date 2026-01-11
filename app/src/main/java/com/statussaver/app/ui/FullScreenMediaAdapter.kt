@@ -34,7 +34,8 @@ import java.io.File
 class FullScreenMediaAdapter(
     private val items: List<MediaItem>,
     private val onDownloadStateChanged: (Int, Boolean) -> Unit,
-    private val onControlsVisibilityChanged: (Boolean) -> Unit = {}
+    private val onControlsVisibilityChanged: (Boolean) -> Unit = {},
+    private val onZoomStateChanged: (Boolean) -> Unit = {}
 ) : RecyclerView.Adapter<FullScreenMediaAdapter.MediaViewHolder>() {
 
     private var currentVideoView: VideoView? = null
@@ -102,9 +103,7 @@ class FullScreenMediaAdapter(
         private val minScale = 1.0f
         private val maxScale = 3.0f
         private var scaleGestureDetector: ScaleGestureDetector? = null
-        
-        // Controls position offset for FABs (in dp)
-        private val controlsOffsetForFabs = 80f
+        private var isZoomedIn = false
 
         @SuppressLint("ClickableViewAccessibility")
         fun bind(item: MediaItem) {
@@ -194,7 +193,12 @@ class FullScreenMediaAdapter(
                     }
 
                     override fun onDoubleTapCenter() {
-                        togglePlayPause()
+                        // If zoomed in, double-tap center = zoom out (not pause)
+                        if (isZoomedIn) {
+                            resetZoom()
+                        } else {
+                            togglePlayPause()
+                        }
                     }
 
                     override fun onSingleTap() {
@@ -203,28 +207,41 @@ class FullScreenMediaAdapter(
                 }
             )
             
-            // Setup pinch-to-zoom for video
+            // Setup pinch-to-zoom for video with improved responsiveness
             scaleGestureDetector = ScaleGestureDetector(
                 itemView.context,
                 object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                     override fun onScale(detector: ScaleGestureDetector): Boolean {
-                        videoScaleFactor *= detector.scaleFactor
+                        // 1.5x multiplier for faster, more responsive zoom
+                        val scaleDelta = (detector.scaleFactor - 1f) * 1.5f + 1f
+                        videoScaleFactor *= scaleDelta
                         videoScaleFactor = videoScaleFactor.coerceIn(minScale, maxScale)
                         
                         videoView.scaleX = videoScaleFactor
                         videoView.scaleY = videoScaleFactor
+                        
+                        // Update zoom state and notify
+                        val wasZoomed = isZoomedIn
+                        isZoomedIn = videoScaleFactor > 1.05f
+                        if (wasZoomed != isZoomedIn) {
+                            onZoomStateChanged(isZoomedIn)
+                        }
                         return true
                     }
                     
                     override fun onScaleEnd(detector: ScaleGestureDetector) {
                         // Snap back to 1.0 if close to minimum
-                        if (videoScaleFactor < 1.1f) {
+                        if (videoScaleFactor < 1.15f) {
                             videoView.animate()
                                 .scaleX(1.0f)
                                 .scaleY(1.0f)
                                 .setDuration(200)
                                 .start()
                             videoScaleFactor = 1.0f
+                            if (isZoomedIn) {
+                                isZoomedIn = false
+                                onZoomStateChanged(false)
+                            }
                         }
                     }
                 }
@@ -239,17 +256,34 @@ class FullScreenMediaAdapter(
         }
         
         private fun performSeek(forward: Boolean) {
-            val currentPos = videoView.currentPosition
-            val seekAmount = 3000 // 3 seconds
-            
-            val newPos = if (forward) {
-                minOf(currentPos + seekAmount, videoView.duration)
-            } else {
-                maxOf(currentPos - seekAmount, 0)
+            try {
+                val duration = videoView.duration
+                if (duration <= 0) return  // Video not ready
+                
+                val currentPos = videoView.currentPosition
+                val seekAmount = 3000 // 3 seconds
+                
+                val newPos = if (forward) {
+                    minOf(currentPos + seekAmount, duration)
+                } else {
+                    maxOf(currentPos - seekAmount, 0)
+                }
+                
+                // Use MediaPlayer's seekTo with SEEK_CLOSEST for better precision on API 26+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && mediaPlayer != null) {
+                    mediaPlayer?.seekTo(newPos.toLong(), MediaPlayer.SEEK_CLOSEST)
+                } else {
+                    videoView.seekTo(newPos)
+                }
+                
+                showSeekAnimation(forward)
+            } catch (e: Exception) {
+                // Fallback to basic seek if MediaPlayer fails
+                try {
+                    videoView.seekTo(if (forward) videoView.currentPosition + 3000 else maxOf(videoView.currentPosition - 3000, 0))
+                    showSeekAnimation(forward)
+                } catch (_: Exception) { }
             }
-            
-            videoView.seekTo(newPos)
-            showSeekAnimation(forward)
         }
         
         private fun setupCustomControls() {
@@ -325,16 +359,11 @@ class FullScreenMediaAdapter(
             controlsVisible = !controlsVisible
             val targetAlpha = if (controlsVisible) 1f else 0f
             
-            // Convert dp to pixels for the offset
-            val density = itemView.context.resources.displayMetrics.density
-            val offsetPx = controlsOffsetForFabs * density
-            
-            // When controls are visible, move them up to avoid FAB overlap
-            val targetTranslationY = if (controlsVisible) -offsetPx else 0f
+            // Timeline stays at fixed bottom position - no translation needed
+            // FABs will auto-hide independently via Activity callback
             
             customControls.animate()
                 .alpha(targetAlpha)
-                .translationY(targetTranslationY)
                 .setDuration(200)
                 .setInterpolator(AccelerateDecelerateInterpolator())
                 .withStartAction { 
@@ -345,8 +374,24 @@ class FullScreenMediaAdapter(
                 }
                 .start()
             
-            // Notify Activity to sync FAB visibility
+            // Notify Activity to sync FAB visibility and reset auto-hide timer
             onControlsVisibilityChanged(controlsVisible)
+        }
+        
+        /**
+         * Zoom out to 100% with animation
+         */
+        private fun resetZoom() {
+            if (isZoomedIn) {
+                videoView.animate()
+                    .scaleX(1.0f)
+                    .scaleY(1.0f)
+                    .setDuration(200)
+                    .start()
+                videoScaleFactor = 1.0f
+                isZoomedIn = false
+                onZoomStateChanged(false)
+            }
         }
         
         private fun formatTime(ms: Int): String {

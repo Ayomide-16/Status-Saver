@@ -121,6 +121,10 @@ class FullScreenViewActivity : AppCompatActivity() {
                 } else {
                     hideFabs()
                 }
+            },
+            onZoomStateChanged = { isZoomed ->
+                // Disable swiping while zoomed to prevent accidental navigation
+                viewPager.isUserInputEnabled = !isZoomed
             }
         )
 
