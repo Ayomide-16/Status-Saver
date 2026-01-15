@@ -138,47 +138,65 @@ class StatusListFragment : Fragment() {
     
     private fun observeSavedStatuses() {
         viewModel.getSavedStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
-            val items = statuses.map {
-                StatusAdapter.StatusItem(
-                    id = it.id,
-                    filename = it.filename,
-                    path = it.localPath,
-                    uri = it.originalUri,
-                    fileType = it.fileType,
-                    source = StatusSource.SAVED,
-                    isDownloaded = true,
-                    cachedAt = it.savedAt,
-                    expiresAt = 0L // Saved files don't expire
-                )
+            try {
+                val items = statuses.mapNotNull { status ->
+                    // Skip items with invalid paths
+                    if (status.localPath.isNullOrEmpty() && status.originalUri.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+                    
+                    StatusAdapter.StatusItem(
+                        id = status.id,
+                        filename = status.filename,
+                        path = status.localPath ?: "",
+                        uri = status.originalUri ?: "",
+                        fileType = status.fileType,
+                        source = StatusSource.SAVED,
+                        isDownloaded = true,
+                        cachedAt = status.savedAt,
+                        expiresAt = 0L // Saved files don't expire
+                    )
+                }
+                adapter.submitList(items)
+                updateEmptyState(items.isEmpty())
+            } catch (e: Exception) {
+                updateEmptyState(true)
             }
-            adapter.submitList(items)
-            updateEmptyState(items.isEmpty())
         }
     }
     
     private fun observeCachedStatuses() {
         viewModel.getCachedStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
-            val retentionDays = com.statussaver.app.util.Constants.getRetentionDays(requireContext())
-            val retentionMs = retentionDays * 24L * 60L * 60L * 1000L
-            
-            // Remove duplicates by filename
-            val uniqueStatuses = statuses.distinctBy { it.filename }
-            
-            val items = uniqueStatuses.map {
-                StatusAdapter.StatusItem(
-                    id = it.id,
-                    filename = it.filename,
-                    path = it.localPath,
-                    uri = it.originalUri,
-                    fileType = it.fileType,
-                    source = StatusSource.CACHED,
-                    isDownloaded = viewModel.isDownloaded(it.filename),
-                    cachedAt = it.savedAt,
-                    expiresAt = it.savedAt + retentionMs
-                )
+            try {
+                val retentionDays = com.statussaver.app.util.Constants.getRetentionDays(requireContext())
+                val retentionMs = retentionDays * 24L * 60L * 60L * 1000L
+                
+                // Remove duplicates by filename
+                val uniqueStatuses = statuses.distinctBy { it.filename }
+                
+                val items = uniqueStatuses.mapNotNull { status ->
+                    // Skip items with invalid paths
+                    if (status.localPath.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+                    
+                    StatusAdapter.StatusItem(
+                        id = status.id,
+                        filename = status.filename,
+                        path = status.localPath ?: "",
+                        uri = status.originalUri ?: "",
+                        fileType = status.fileType,
+                        source = StatusSource.CACHED,
+                        isDownloaded = viewModel.isDownloaded(status.filename),
+                        cachedAt = status.savedAt,
+                        expiresAt = status.savedAt + retentionMs
+                    )
+                }
+                adapter.submitList(items)
+                updateEmptyState(items.isEmpty())
+            } catch (e: Exception) {
+                updateEmptyState(true)
             }
-            adapter.submitList(items)
-            updateEmptyState(items.isEmpty())
         }
     }
     

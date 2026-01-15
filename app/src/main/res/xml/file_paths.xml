@@ -1,9 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- App's private external files directory for cache -->
     <external-files-path
         name="status_cache"
-        path="Pictures/StatusCache/" />
-    <external-files-path
-        name="status_saved"
-        path="Pictures/StatusSaved/" />
+        path="Pictures/" />
+    
+    <!-- Public Pictures directory (for MediaStore saved images) -->
+    <external-path
+        name="external_pictures"
+        path="Pictures/" />
+    
+    <!-- Public Movies directory (for MediaStore saved videos) -->
+    <external-path
+        name="external_movies"
+        path="Movies/" />
+    
+    <!-- Public DCIM directory (in case system saves there) -->
+    <external-path
+        name="external_dcim"
+        path="DCIM/" />
+    
+    <!-- Root external storage (fallback for legacy saves) -->
+    <external-path
+        name="external_root"
+        path="." />
+    
+    <!-- Cache directory -->
+    <cache-path
+        name="cache"
+        path="." />
 </paths>
