@@ -358,22 +358,46 @@ class FullScreenViewActivity : AppCompatActivity() {
     private fun shareStatus() {
         val currentItem = getCurrentItem()
         
-        val shareUri = if (currentItem != null) {
-            when (currentItem.source) {
-                StatusSource.LIVE -> Uri.parse(currentItem.uri)
-                else -> {
-                    val file = File(currentItem.path)
-                    FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        val shareUri: Uri? = try {
+            if (currentItem != null) {
+                when {
+                    // For live status, use SAF URI directly
+                    currentItem.source == StatusSource.LIVE -> Uri.parse(currentItem.uri)
+                    // Check if path is already a content:// URI (from MediaStore)
+                    currentItem.path.startsWith("content://") -> Uri.parse(currentItem.path)
+                    // Otherwise treat as file path and use FileProvider
+                    else -> {
+                        val file = File(currentItem.path)
+                        if (file.exists()) {
+                            FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+                        } else {
+                            // File doesn't exist, try using the URI
+                            Uri.parse(currentItem.uri)
+                        }
+                    }
+                }
+            } else {
+                when {
+                    source == StatusSource.LIVE -> Uri.parse(fileUri)
+                    filePath?.startsWith("content://") == true -> Uri.parse(filePath)
+                    else -> {
+                        val file = File(filePath ?: return)
+                        if (file.exists()) {
+                            FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+                        } else {
+                            null
+                        }
+                    }
                 }
             }
-        } else {
-            when (source) {
-                StatusSource.LIVE -> Uri.parse(fileUri)
-                else -> {
-                    val file = File(filePath ?: return)
-                    FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-                }
-            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error preparing file for sharing", Toast.LENGTH_SHORT).show()
+            null
+        }
+        
+        if (shareUri == null) {
+            Toast.makeText(this, "Unable to share this file", Toast.LENGTH_SHORT).show()
+            return
         }
 
         val itemType = currentItem?.fileType ?: fileType
