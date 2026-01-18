@@ -357,58 +357,138 @@ class FullScreenViewActivity : AppCompatActivity() {
 
     private fun shareStatus() {
         val currentItem = getCurrentItem()
+        val itemPath = currentItem?.path ?: filePath
+        val itemUri = currentItem?.uri ?: fileUri
+        val itemSource = currentItem?.source ?: source
+        val itemType = currentItem?.fileType ?: fileType
         
-        val shareUri: Uri? = try {
-            if (currentItem != null) {
-                when {
-                    // For live status, use SAF URI directly
-                    currentItem.source == StatusSource.LIVE -> Uri.parse(currentItem.uri)
-                    // Check if path is already a content:// URI (from MediaStore)
-                    currentItem.path.startsWith("content://") -> Uri.parse(currentItem.path)
-                    // Otherwise treat as file path and use FileProvider
-                    else -> {
-                        val file = File(currentItem.path)
-                        if (file.exists()) {
-                            FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-                        } else {
-                            // File doesn't exist, try using the URI
-                            Uri.parse(currentItem.uri)
-                        }
-                    }
-                }
-            } else {
-                when {
-                    source == StatusSource.LIVE -> Uri.parse(fileUri)
-                    filePath?.startsWith("content://") == true -> Uri.parse(filePath)
-                    else -> {
-                        val file = File(filePath ?: return)
-                        if (file.exists()) {
-                            FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-                        } else {
-                            null
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Toast.makeText(this, "Error preparing file for sharing", Toast.LENGTH_SHORT).show()
-            null
-        }
-        
-        if (shareUri == null) {
+        if (itemPath.isNullOrEmpty() && itemUri.isNullOrEmpty()) {
             Toast.makeText(this, "Unable to share this file", Toast.LENGTH_SHORT).show()
             return
         }
-
-        val itemType = currentItem?.fileType ?: fileType
         
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = if (itemType == FileType.VIDEO) "video/*" else "image/*"
-            putExtra(Intent.EXTRA_STREAM, shareUri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val shareUri = withContext(Dispatchers.IO) {
+                    getShareableUri(itemPath, itemUri, itemSource)
+                }
+                
+                if (shareUri == null) {
+                    Toast.makeText(this@FullScreenViewActivity, "Unable to share this file", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = if (itemType == FileType.VIDEO) "video/*" else "image/*"
+                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                
+                startActivity(Intent.createChooser(shareIntent, "Share via"))
+            } catch (e: Exception) {
+                Toast.makeText(this@FullScreenViewActivity, "Error sharing file", Toast.LENGTH_SHORT).show()
+            }
         }
-
-        startActivity(Intent.createChooser(shareIntent, "Share via"))
+    }
+    
+    /**
+     * Get a shareable URI for the given file
+     * Handles file paths, content:// URIs, and MediaStore URIs
+     */
+    private suspend fun getShareableUri(path: String?, uri: String?, source: StatusSource): Uri? = withContext(Dispatchers.IO) {
+        try {
+            // Case 1: Live status - use SAF URI directly (already has permission)
+            if (source == StatusSource.LIVE && !uri.isNullOrEmpty()) {
+                return@withContext Uri.parse(uri)
+            }
+            
+            // Case 2: Path is a regular file path
+            if (!path.isNullOrEmpty() && !path.startsWith("content://")) {
+                val file = File(path)
+                if (file.exists() && file.canRead()) {
+                    return@withContext FileProvider.getUriForFile(
+                        this@FullScreenViewActivity,
+                        "${packageName}.fileprovider",
+                        file
+                    )
+                }
+            }
+            
+            // Case 3: Path is a content:// URI - try to get actual file path
+            if (!path.isNullOrEmpty() && path.startsWith("content://")) {
+                val contentUri = Uri.parse(path)
+                
+                // Try to get the actual file path from MediaStore
+                val actualPath = getFilePathFromContentUri(contentUri)
+                if (!actualPath.isNullOrEmpty()) {
+                    val file = File(actualPath)
+                    if (file.exists() && file.canRead()) {
+                        return@withContext FileProvider.getUriForFile(
+                            this@FullScreenViewActivity,
+                            "${packageName}.fileprovider",
+                            file
+                        )
+                    }
+                }
+                
+                // Fallback: Copy to cache and share from there
+                return@withContext copyToCache(contentUri)
+            }
+            
+            // Case 4: Try the original URI as last resort
+            if (!uri.isNullOrEmpty()) {
+                return@withContext Uri.parse(uri)
+            }
+            
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    /**
+     * Get actual file path from a content:// URI
+     */
+    private fun getFilePathFromContentUri(uri: Uri): String? {
+        try {
+            val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val columnIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                    return cursor.getString(columnIndex)
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore - will use fallback
+        }
+        return null
+    }
+    
+    /**
+     * Copy content:// URI to cache directory and return FileProvider URI
+     */
+    private fun copyToCache(sourceUri: Uri): Uri? {
+        try {
+            val fileName = sourceUri.lastPathSegment ?: "shared_file"
+            val cacheFile = File(cacheDir, fileName)
+            
+            contentResolver.openInputStream(sourceUri)?.use { input ->
+                cacheFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            
+            if (cacheFile.exists()) {
+                return FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    cacheFile
+                )
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+        return null
     }
 
     override fun onPause() {
