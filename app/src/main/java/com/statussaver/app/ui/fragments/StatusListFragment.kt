@@ -76,13 +76,43 @@ class StatusListFragment : Fragment() {
         adapter = StatusAdapter(
             showCacheInfo = (statusSource == StatusSource.CACHED),
             onItemClick = { item -> openFullScreen(item) },
-            onDownloadClick = { item -> downloadStatus(item) }
+            onDownloadClick = { item -> downloadStatus(item) },
+            onShareClick = { item -> shareStatus(item) },
+            onLongClick = { item -> 
+                adapter.enterSelectionMode()
+                adapter.toggleSelection(item)
+                true
+            },
+            onSelectionChanged = { selectedItems ->
+                updateSelectionUI(selectedItems)
+            }
         )
         
         binding.recyclerView.apply {
             layoutManager = GridLayoutManager(requireContext(), 2)
             adapter = this@StatusListFragment.adapter
             setHasFixedSize(true)
+        }
+    }
+    
+    private fun shareStatus(item: StatusAdapter.StatusItem) {
+        val intent = Intent(requireContext(), FullScreenViewActivity::class.java).apply {
+            putExtra(FullScreenViewActivity.EXTRA_FILE_PATH, item.path)
+            putExtra(FullScreenViewActivity.EXTRA_FILE_URI, item.uri)
+            putExtra(FullScreenViewActivity.EXTRA_FILE_NAME, item.filename)
+            putExtra(FullScreenViewActivity.EXTRA_FILE_TYPE, item.fileType.name)
+            putExtra(FullScreenViewActivity.EXTRA_SOURCE, item.source.name)
+            putExtra(FullScreenViewActivity.EXTRA_IS_DOWNLOADED, item.isDownloaded)
+            putExtra("ACTION_SHARE", true) // Flag to trigger share on open
+        }
+        startActivity(intent)
+    }
+    
+    private fun updateSelectionUI(selectedItems: Set<StatusAdapter.StatusItem>) {
+        // For now, just show a toast with selection count
+        // In a full implementation, show/hide action bar
+        if (selectedItems.isNotEmpty()) {
+            Toast.makeText(requireContext(), "${selectedItems.size} selected", Toast.LENGTH_SHORT).show()
         }
     }
     

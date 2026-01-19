@@ -27,6 +27,14 @@
             android:layout_gravity="bottom"
             android:background="@drawable/gradient_bottom" />
 
+        <!-- Selection Overlay (shown when item is selected) -->
+        <View
+            android:id="@+id/selectionOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#4000AA00"
+            android:visibility="gone" />
+
         <!-- Video Play Indicator -->
         <ImageView
             android:id="@+id/videoIndicator"
@@ -37,6 +45,16 @@
             android:visibility="gone"
             android:contentDescription="Video indicator" />
 
+        <!-- Selection Checkbox (top left, shown in selection mode) -->
+        <CheckBox
+            android:id="@+id/selectionCheckBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start|top"
+            android:layout_margin="6dp"
+            android:buttonTint="@color/app_green"
+            android:visibility="gone" />
+
         <!-- Cache Info Overlay -->
         <LinearLayout
             android:id="@+id/cacheInfoLayout"
@@ -45,7 +63,7 @@
             android:layout_gravity="bottom"
             android:orientation="vertical"
             android:paddingStart="6dp"
-            android:paddingEnd="40dp"
+            android:paddingEnd="48dp"
             android:paddingBottom="4dp"
             android:visibility="gone">
 
@@ -74,7 +92,7 @@
 
         </LinearLayout>
 
-        <!-- Download/Checkmark Button Container -->
+        <!-- Action Button Container -->
         <FrameLayout
             android:id="@+id/downloadContainer"
             android:layout_width="wrap_content"
@@ -99,7 +117,23 @@
                 app:backgroundTint="@color/app_green"
                 app:tint="@android:color/white" />
 
-            <!-- Double Checkmark (Saved Indicator) -->
+            <!-- Share Button - Mini FAB (for Saved tab) -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnShare"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:src="@drawable/ic_share"
+                android:scaleType="center"
+                android:contentDescription="Share"
+                android:visibility="gone"
+                app:fabSize="mini"
+                app:fabCustomSize="36dp"
+                app:maxImageSize="18dp"
+                app:elevation="2dp"
+                app:backgroundTint="@color/app_green"
+                app:tint="@android:color/white" />
+
+            <!-- Double Checkmark (Saved Indicator for non-saved tabs) -->
             <ImageView
                 android:id="@+id/checkMark"
                 android:layout_width="36dp"

@@ -3,6 +3,7 @@ package com.statussaver.app.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -23,11 +24,18 @@ import java.util.Locale
 class StatusAdapter(
     private val showCacheInfo: Boolean = false,
     private val onItemClick: (StatusItem) -> Unit,
-    private val onDownloadClick: (StatusItem) -> Unit
+    private val onDownloadClick: (StatusItem) -> Unit,
+    private val onShareClick: ((StatusItem) -> Unit)? = null,
+    private val onLongClick: ((StatusItem) -> Boolean)? = null,
+    private val onSelectionChanged: ((Set<StatusItem>) -> Unit)? = null
 ) : ListAdapter<StatusAdapter.StatusItem, StatusAdapter.StatusViewHolder>(StatusDiffCallback()) {
 
     private var downloadedFilenames: Set<String> = emptySet()
     private val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+    
+    // Selection mode state
+    private var selectionMode = false
+    private val selectedItems = mutableSetOf<String>() // Track by filename+source
     
     data class StatusItem(
         val id: Long,
@@ -39,17 +47,71 @@ class StatusAdapter(
         var isDownloaded: Boolean = false,
         val cachedAt: Long = 0L,
         val expiresAt: Long = 0L
-    )
+    ) {
+        val selectionKey: String get() = "${filename}_${source.name}"
+    }
     
     fun updateDownloadedState(filenames: Set<String>) {
         downloadedFilenames = filenames
-        // Refresh items to update download state
         currentList.forEachIndexed { index, item ->
             val newState = filenames.contains(item.filename) || item.source == StatusSource.SAVED
             if (item.isDownloaded != newState) {
                 notifyItemChanged(index)
             }
         }
+    }
+    
+    // ========== Selection Mode Methods ==========
+    
+    fun isInSelectionMode(): Boolean = selectionMode
+    
+    fun enterSelectionMode() {
+        if (!selectionMode) {
+            selectionMode = true
+            notifyDataSetChanged()
+        }
+    }
+    
+    fun exitSelectionMode() {
+        if (selectionMode) {
+            selectionMode = false
+            selectedItems.clear()
+            notifyDataSetChanged()
+            onSelectionChanged?.invoke(emptySet())
+        }
+    }
+    
+    fun toggleSelection(item: StatusItem) {
+        val key = item.selectionKey
+        if (selectedItems.contains(key)) {
+            selectedItems.remove(key)
+        } else {
+            selectedItems.add(key)
+        }
+        notifyItemChanged(currentList.indexOfFirst { it.selectionKey == key })
+        notifySelectionChanged()
+    }
+    
+    fun selectAll() {
+        currentList.forEach { selectedItems.add(it.selectionKey) }
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+    
+    fun clearSelection() {
+        selectedItems.clear()
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+    
+    fun getSelectedItems(): List<StatusItem> {
+        return currentList.filter { selectedItems.contains(it.selectionKey) }
+    }
+    
+    fun getSelectedCount(): Int = selectedItems.size
+    
+    private fun notifySelectionChanged() {
+        onSelectionChanged?.invoke(getSelectedItems().toSet())
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StatusViewHolder {
@@ -60,23 +122,25 @@ class StatusAdapter(
 
     override fun onBindViewHolder(holder: StatusViewHolder, position: Int) {
         val item = getItem(position)
-        // Update download state from latest downloaded filenames
         val updatedItem = item.copy(
             isDownloaded = downloadedFilenames.contains(item.filename) || item.source == StatusSource.SAVED
         )
-        holder.bind(updatedItem)
+        holder.bind(updatedItem, selectionMode, selectedItems.contains(item.selectionKey))
     }
 
     inner class StatusViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val imageView: ImageView = itemView.findViewById(R.id.statusImage)
         private val videoIndicator: ImageView = itemView.findViewById(R.id.videoIndicator)
         private val btnDownload: FloatingActionButton = itemView.findViewById(R.id.btnDownload)
+        private val btnShare: FloatingActionButton? = itemView.findViewById(R.id.btnShare)
         private val checkMark: ImageView = itemView.findViewById(R.id.checkMark)
+        private val selectionCheckBox: CheckBox? = itemView.findViewById(R.id.selectionCheckBox)
         private val cacheInfoLayout: LinearLayout = itemView.findViewById(R.id.cacheInfoLayout)
         private val txtCacheDate: TextView = itemView.findViewById(R.id.txtCacheDate)
         private val txtExpiryDate: TextView = itemView.findViewById(R.id.txtExpiryDate)
+        private val selectionOverlay: View? = itemView.findViewById(R.id.selectionOverlay)
 
-        fun bind(item: StatusItem) {
+        fun bind(item: StatusItem, inSelectionMode: Boolean, isSelected: Boolean) {
             // Load thumbnail
             when (item.source) {
                 StatusSource.LIVE -> loadFromUri(item)
@@ -100,17 +164,50 @@ class StatusAdapter(
                 cacheInfoLayout.visibility = View.GONE
             }
             
-            // Show download button or double checkmark
-            if (item.isDownloaded || item.source == StatusSource.SAVED) {
+            // Handle selection mode UI
+            if (inSelectionMode) {
+                // Show selection checkbox
+                selectionCheckBox?.visibility = View.VISIBLE
+                selectionCheckBox?.isChecked = isSelected
+                selectionOverlay?.visibility = if (isSelected) View.VISIBLE else View.GONE
+                
+                // Hide action buttons in selection mode
                 btnDownload.visibility = View.GONE
-                checkMark.visibility = View.VISIBLE
-            } else {
-                btnDownload.visibility = View.VISIBLE
+                btnShare?.visibility = View.GONE
                 checkMark.visibility = View.GONE
-                btnDownload.setOnClickListener { onDownloadClick(item) }
+                
+                // Click toggles selection
+                itemView.setOnClickListener { toggleSelection(item) }
+                itemView.setOnLongClickListener { true } // Consume long click
+            } else {
+                // Normal mode
+                selectionCheckBox?.visibility = View.GONE
+                selectionOverlay?.visibility = View.GONE
+                
+                // For Saved tab: show share button instead of checkmark
+                if (item.source == StatusSource.SAVED) {
+                    btnDownload.visibility = View.GONE
+                    checkMark.visibility = View.GONE
+                    btnShare?.visibility = View.VISIBLE
+                    btnShare?.setOnClickListener { onShareClick?.invoke(item) }
+                } else if (item.isDownloaded) {
+                    // For other tabs with downloaded items
+                    btnDownload.visibility = View.GONE
+                    checkMark.visibility = View.VISIBLE
+                    btnShare?.visibility = View.GONE
+                } else {
+                    // Not downloaded
+                    btnDownload.visibility = View.VISIBLE
+                    checkMark.visibility = View.GONE
+                    btnShare?.visibility = View.GONE
+                    btnDownload.setOnClickListener { onDownloadClick(item) }
+                }
+                
+                itemView.setOnClickListener { onItemClick(item) }
+                itemView.setOnLongClickListener { 
+                    onLongClick?.invoke(item) ?: false
+                }
             }
-            
-            itemView.setOnClickListener { onItemClick(item) }
         }
         
         private fun loadFromUri(item: StatusItem) {
