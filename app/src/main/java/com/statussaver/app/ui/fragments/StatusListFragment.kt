@@ -289,24 +289,6 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         adapter.exitSelectionMode()
     }
     
-    private fun setupSelectionActionBar() {
-        binding.btnCancelSelection.setOnClickListener {
-            adapter.exitSelectionMode()
-        }
-        
-        binding.btnSaveAll.setOnClickListener {
-            saveSelectedItems()
-        }
-        
-        binding.btnShareAll.setOnClickListener {
-            shareSelectedItems()
-        }
-        
-        binding.btnDeleteAll.setOnClickListener {
-            confirmDeleteSelectedItems()
-        }
-    }
-    
     private fun saveSelectedItems() {
         val items = adapter.getSelectedItems()
         if (items.isEmpty()) return
@@ -549,11 +531,6 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                 Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
             }
         }
-    }
-    
-    override fun onResume() {
-        super.onResume()
-        refreshData()
     }
     
     override fun onDestroyView() {

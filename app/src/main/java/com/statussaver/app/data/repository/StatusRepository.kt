@@ -510,7 +510,7 @@ class StatusRepository(private val context: Context) {
             }
             
             // Delete from database
-            statusDao.deleteById(id)
+            statusDao.deleteStatusById(id)
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting saved status: ${e.message}")
