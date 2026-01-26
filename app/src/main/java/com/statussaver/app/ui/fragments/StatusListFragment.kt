@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 /**
  * Fragment for displaying status list (Images or Videos)
  */
-class StatusListFragment : Fragment() {
+class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback {
     
     private var _binding: FragmentStatusListBinding? = null
     private val binding get() = _binding!!
@@ -73,8 +73,34 @@ class StatusListFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
         setupSwipeRefresh()
-        setupSelectionActionBar()
         observeData()
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Register as selection callback with MainActivity
+        (activity as? com.statussaver.app.MainActivity)?.setSelectionCallback(this)
+        // Refresh download states when returning from fullscreen view
+        refreshDownloadStates()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Unregister callback when fragment is not visible
+        (activity as? com.statussaver.app.MainActivity)?.setSelectionCallback(null)
+    }
+    
+    private fun refreshDownloadStates() {
+        lifecycleScope.launch {
+            try {
+                val downloadedFilenames = withContext(Dispatchers.IO) {
+                    repository.getAllDownloadedFilenames()
+                }
+                adapter.updateDownloadedState(downloadedFilenames)
+            } catch (e: Exception) {
+                // Ignore errors
+            }
+        }
     }
     
     private fun setupRecyclerView() {
@@ -101,32 +127,166 @@ class StatusListFragment : Fragment() {
     }
     
     private fun shareStatus(item: StatusAdapter.StatusItem) {
-        val intent = Intent(requireContext(), FullScreenViewActivity::class.java).apply {
-            putExtra(FullScreenViewActivity.EXTRA_FILE_PATH, item.path)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_URI, item.uri)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_NAME, item.filename)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_TYPE, item.fileType.name)
-            putExtra(FullScreenViewActivity.EXTRA_SOURCE, item.source.name)
-            putExtra(FullScreenViewActivity.EXTRA_IS_DOWNLOADED, item.isDownloaded)
-            putExtra("ACTION_SHARE", true) // Flag to trigger share on open
+        // Share directly instead of opening fullscreen view
+        lifecycleScope.launch {
+            try {
+                val shareUri = withContext(Dispatchers.IO) {
+                    getShareableUri(item)
+                }
+                
+                if (shareUri == null) {
+                    Toast.makeText(requireContext(), "Unable to share this file", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = if (item.fileType == FileType.VIDEO) "video/*" else "image/*"
+                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                
+                startActivity(Intent.createChooser(shareIntent, "Share via"))
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Error sharing file", Toast.LENGTH_SHORT).show()
+            }
         }
-        startActivity(intent)
+    }
+    
+    private suspend fun getShareableUri(item: StatusAdapter.StatusItem): android.net.Uri? = withContext(Dispatchers.IO) {
+        try {
+            // For live statuses, use SAF URI directly
+            if (item.source == StatusSource.LIVE && item.uri.isNotEmpty()) {
+                return@withContext android.net.Uri.parse(item.uri)
+            }
+            
+            // For file paths
+            if (item.path.isNotEmpty() && !item.path.startsWith("content://")) {
+                val file = java.io.File(item.path)
+                if (file.exists() && file.canRead()) {
+                    return@withContext androidx.core.content.FileProvider.getUriForFile(
+                        requireContext(),
+                        "${requireContext().packageName}.fileprovider",
+                        file
+                    )
+                }
+            }
+            
+            // For content:// URIs (MediaStore) - try to get actual file path
+            if (item.path.startsWith("content://")) {
+                val contentUri = android.net.Uri.parse(item.path)
+                
+                // Try to get actual file path
+                val actualPath = getFilePathFromContentUri(contentUri)
+                if (!actualPath.isNullOrEmpty()) {
+                    val file = java.io.File(actualPath)
+                    if (file.exists() && file.canRead()) {
+                        return@withContext androidx.core.content.FileProvider.getUriForFile(
+                            requireContext(),
+                            "${requireContext().packageName}.fileprovider",
+                            file
+                        )
+                    }
+                }
+                
+                // Fallback: copy to cache and share
+                return@withContext copyToCache(contentUri, item.filename)
+            }
+            
+            // Last resort: try the original URI
+            if (item.uri.isNotEmpty()) {
+                return@withContext android.net.Uri.parse(item.uri)
+            }
+            
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    private fun getFilePathFromContentUri(uri: android.net.Uri): String? {
+        try {
+            val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+            requireContext().contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val columnIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                    return cursor.getString(columnIndex)
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+        return null
+    }
+    
+    private fun copyToCache(sourceUri: android.net.Uri, filename: String): android.net.Uri? {
+        try {
+            val cacheFile = java.io.File(requireContext().cacheDir, filename)
+            requireContext().contentResolver.openInputStream(sourceUri)?.use { input ->
+                cacheFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (cacheFile.exists()) {
+                return androidx.core.content.FileProvider.getUriForFile(
+                    requireContext(),
+                    "${requireContext().packageName}.fileprovider",
+                    cacheFile
+                )
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+        return null
     }
     
     private fun updateSelectionUI(selectedItems: Set<StatusAdapter.StatusItem>) {
         val count = selectedItems.size
+        val mainActivity = activity as? com.statussaver.app.MainActivity
         
         if (count > 0) {
-            // Show selection action bar
-            binding.selectionActionBar.visibility = View.VISIBLE
-            binding.txtSelectionCount.text = "$count selected"
-            
-            // Hide save button for Saved tab (already saved)
-            binding.btnSaveAll.visibility = if (statusSource == StatusSource.SAVED) View.GONE else View.VISIBLE
+            // Enter selection mode in MainActivity
+            if (!adapter.isInSelectionMode()) {
+                mainActivity?.enterSelectionMode(statusSource)
+            }
+            mainActivity?.updateSelectionCount(count)
         } else {
-            // Hide selection action bar
-            binding.selectionActionBar.visibility = View.GONE
+            // Exit selection mode
+            mainActivity?.exitSelectionMode()
         }
+    }
+    
+    // ========== SelectionCallback Implementation ==========
+    
+    override fun onEnterSelectionMode(source: StatusSource) {
+        adapter.enterSelectionMode()
+    }
+    
+    override fun onSelectionChanged(count: Int, source: StatusSource) {
+        // Handled by updateSelectionUI
+    }
+    
+    override fun onExitSelectionMode() {
+        adapter.exitSelectionMode()
+    }
+    
+    override fun onSaveSelectedClicked() {
+        saveSelectedItems()
+    }
+    
+    override fun onShareSelectedClicked() {
+        shareSelectedItems()
+    }
+    
+    override fun onDeleteSelectedClicked() {
+        confirmDeleteSelectedItems()
+    }
+    
+    override fun onSelectAllClicked() {
+        adapter.selectAll()
+    }
+    
+    override fun onCancelSelectionClicked() {
+        adapter.exitSelectionMode()
     }
     
     private fun setupSelectionActionBar() {

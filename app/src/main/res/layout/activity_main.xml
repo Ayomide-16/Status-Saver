@@ -15,6 +15,7 @@
         android:fitsSystemWindows="true"
         android:elevation="4dp">
 
+        <!-- Normal Toolbar -->
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
@@ -35,6 +36,79 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Toggle theme"
                 app:tint="?attr/colorOnPrimary" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
+
+        <!-- Selection Mode Toolbar (overlays normal toolbar) -->
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/selectionToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/app_green"
+            android:visibility="gone">
+
+            <!-- Close Button -->
+            <ImageButton
+                android:id="@+id/btnCloseSelection"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_close"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Exit selection mode"
+                app:tint="@android:color/white" />
+
+            <!-- Selection Count -->
+            <TextView
+                android:id="@+id/txtSelectionCount"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginStart="8dp"
+                android:text="0 selected" />
+
+            <!-- Select All Button -->
+            <ImageButton
+                android:id="@+id/btnSelectAll"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_select_all"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Select all"
+                app:tint="@android:color/white" />
+
+            <!-- Save Button -->
+            <ImageButton
+                android:id="@+id/btnSaveSelected"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_download"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Save selected"
+                app:tint="@android:color/white" />
+
+            <!-- Share Button -->
+            <ImageButton
+                android:id="@+id/btnShareSelected"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_share"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Share selected"
+                app:tint="@android:color/white" />
+
+            <!-- Delete Button -->
+            <ImageButton
+                android:id="@+id/btnDeleteSelected"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp"
+                android:src="@drawable/ic_delete"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Delete selected"
+                app:tint="@android:color/white" />
 
         </com.google.android.material.appbar.MaterialToolbar>
 

@@ -1,127 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<androidx.swiperefreshlayout.widget.SwipeRefreshLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/swipeRefresh"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-        android:id="@+id/swipeRefresh"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginBottom="56dp">
+        android:layout_height="match_parent">
 
-        <FrameLayout
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:padding="4dp"
+            android:clipToPadding="false"
+            tools:listitem="@layout/item_status" />
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerView"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:padding="4dp"
-                android:clipToPadding="false"
-                tools:listitem="@layout/item_status" />
+        <!-- Empty State -->
+        <LinearLayout
+            android:id="@+id/emptyState"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp"
+            android:visibility="gone">
 
-            <!-- Empty State -->
-            <LinearLayout
-                android:id="@+id/emptyState"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="32dp"
-                android:visibility="gone">
+            <ImageView
+                android:id="@+id/emptyIcon"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:src="@drawable/ic_empty"
+                android:alpha="0.5"
+                android:contentDescription="No statuses" />
 
-                <ImageView
-                    android:id="@+id/emptyIcon"
-                    android:layout_width="80dp"
-                    android:layout_height="80dp"
-                    android:src="@drawable/ic_empty"
-                    android:alpha="0.5"
-                    android:contentDescription="No statuses" />
+            <TextView
+                android:id="@+id/emptyText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="No statuses found"
+                android:textSize="16sp"
+                android:textColor="?attr/colorOnBackground"
+                android:alpha="0.6" />
 
-                <TextView
-                    android:id="@+id/emptyText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="No statuses found"
-                    android:textSize="16sp"
-                    android:textColor="?attr/colorOnBackground"
-                    android:alpha="0.6" />
+        </LinearLayout>
 
-            </LinearLayout>
+    </FrameLayout>
 
-        </FrameLayout>
-
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-
-    <!-- Selection Action Bar -->
-    <LinearLayout
-        android:id="@+id/selectionActionBar"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:layout_gravity="bottom"
-        android:orientation="horizontal"
-        android:background="@color/app_green"
-        android:elevation="8dp"
-        android:visibility="gone"
-        android:paddingHorizontal="8dp"
-        android:gravity="center_vertical">
-
-        <!-- Close/Cancel Button -->
-        <ImageButton
-            android:id="@+id/btnCancelSelection"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_close"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Cancel selection"
-            app:tint="@android:color/white" />
-
-        <!-- Selection Count -->
-        <TextView
-            android:id="@+id/txtSelectionCount"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="@android:color/white"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:layout_marginStart="8dp"
-            android:text="0 selected" />
-
-        <!-- Save All Button (hidden for Saved tab) -->
-        <ImageButton
-            android:id="@+id/btnSaveAll"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_download"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Save all selected"
-            app:tint="@android:color/white" />
-
-        <!-- Share All Button -->
-        <ImageButton
-            android:id="@+id/btnShareAll"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_share"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Share all selected"
-            app:tint="@android:color/white" />
-
-        <!-- Delete All Button -->
-        <ImageButton
-            android:id="@+id/btnDeleteAll"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_delete"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Delete all selected"
-            app:tint="@android:color/white" />
-
-    </LinearLayout>
-
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>

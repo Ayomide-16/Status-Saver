@@ -491,6 +491,42 @@ class FullScreenViewActivity : AppCompatActivity() {
         return null
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Refresh download state from database to ensure sync between views
+        refreshDownloadStates()
+    }
+    
+    /**
+     * Refresh download states from database for all items
+     * This ensures grid and fullscreen views stay in sync
+     */
+    private fun refreshDownloadStates() {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val downloadedFilenames = withContext(Dispatchers.IO) {
+                    repository.getAllDownloadedFilenames()
+                }
+                
+                // Update media items if in ViewPager mode
+                mediaItems?.forEach { item ->
+                    item.isDownloaded = downloadedFilenames.contains(item.filename) || 
+                                        item.source == StatusSource.SAVED
+                }
+                
+                // Update single item mode
+                if (mediaItems == null && fileName != null) {
+                    isDownloaded = downloadedFilenames.contains(fileName) || 
+                                   source == StatusSource.SAVED
+                }
+                
+                updateDownloadButton()
+            } catch (e: Exception) {
+                // Ignore errors, keep current state
+            }
+        }
+    }
+
     override fun onPause() {
         super.onPause()
         hideHandler.removeCallbacks(hideRunnable)

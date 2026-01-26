@@ -78,9 +78,76 @@ class MainActivity : AppCompatActivity() {
         
         setupBottomNavigation()
         setupClickListeners()
+        setupSelectionToolbar()
         observeViewModel()
         
         checkInitialSetup()
+    }
+    
+    // ========== Selection Mode State ==========
+    private var isInSelectionMode = false
+    private var currentSelectionSource: StatusSource? = null
+    private var selectionCallback: com.statussaver.app.ui.SelectionCallback? = null
+    
+    fun setSelectionCallback(callback: com.statussaver.app.ui.SelectionCallback?) {
+        selectionCallback = callback
+    }
+    
+    fun enterSelectionMode(source: StatusSource) {
+        isInSelectionMode = true
+        currentSelectionSource = source
+        
+        binding.toolbar.visibility = View.GONE
+        binding.selectionToolbar.visibility = View.VISIBLE
+        
+        // Hide save button for Saved tab
+        binding.btnSaveSelected.visibility = if (source == StatusSource.SAVED) View.GONE else View.VISIBLE
+    }
+    
+    fun updateSelectionCount(count: Int) {
+        binding.txtSelectionCount.text = "$count selected"
+    }
+    
+    fun exitSelectionMode() {
+        isInSelectionMode = false
+        currentSelectionSource = null
+        
+        binding.selectionToolbar.visibility = View.GONE
+        binding.toolbar.visibility = View.VISIBLE
+    }
+    
+    private fun setupSelectionToolbar() {
+        binding.btnCloseSelection.setOnClickListener {
+            selectionCallback?.onCancelSelectionClicked()
+            exitSelectionMode()
+        }
+        
+        binding.btnSelectAll.setOnClickListener {
+            selectionCallback?.onSelectAllClicked()
+        }
+        
+        binding.btnSaveSelected.setOnClickListener {
+            selectionCallback?.onSaveSelectedClicked()
+        }
+        
+        binding.btnShareSelected.setOnClickListener {
+            selectionCallback?.onShareSelectedClicked()
+        }
+        
+        binding.btnDeleteSelected.setOnClickListener {
+            selectionCallback?.onDeleteSelectedClicked()
+        }
+    }
+    
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (isInSelectionMode) {
+            selectionCallback?.onCancelSelectionClicked()
+            exitSelectionMode()
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
     }
 
     private fun setupBottomNavigation() {
