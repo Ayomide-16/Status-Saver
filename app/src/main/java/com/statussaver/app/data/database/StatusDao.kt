@@ -35,6 +35,9 @@ interface StatusDao {
     @Query("DELETE FROM statuses WHERE id = :id")
     suspend fun deleteStatusById(id: Long)
     
+    @Query("SELECT * FROM statuses WHERE id = :id LIMIT 1")
+    suspend fun getStatusByIdSync(id: Long): StatusEntity?
+    
     @Query("DELETE FROM statuses WHERE savedAt < :timestamp AND source = 'CACHED'")
     suspend fun deleteCachedOlderThan(timestamp: Long): Int
     

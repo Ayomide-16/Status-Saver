@@ -488,6 +488,61 @@ class StatusRepository(private val context: Context) {
     }
     
     /**
+     * Delete a saved status from MediaStore and database
+     */
+    suspend fun deleteSavedStatus(id: Long): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val status = statusDao.getStatusByIdSync(id) ?: return@withContext false
+            
+            // Try to delete the actual file
+            if (!status.localPath.isNullOrEmpty()) {
+                if (status.localPath.startsWith("content://")) {
+                    // MediaStore URI - delete via ContentResolver
+                    val uri = Uri.parse(status.localPath)
+                    context.contentResolver.delete(uri, null, null)
+                } else {
+                    // Regular file path
+                    val file = File(status.localPath)
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                }
+            }
+            
+            // Delete from database
+            statusDao.deleteById(id)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting saved status: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Delete a cached status from cache directory and database
+     */
+    suspend fun deleteCachedStatus(id: Long): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val status = statusDao.getStatusByIdSync(id) ?: return@withContext false
+            
+            // Delete the cached file
+            if (!status.localPath.isNullOrEmpty()) {
+                val file = File(status.localPath)
+                if (file.exists()) {
+                    file.delete()
+                }
+            }
+            
+            // Delete from database
+            statusDao.deleteStatusById(id)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting cached status: ${e.message}")
+            false
+        }
+    }
+    
+    /**
      * Save a live status (from SAF) to public SA Status Saver folder
      * Uses MediaStore API on Android 10+ for guaranteed compatibility
      */

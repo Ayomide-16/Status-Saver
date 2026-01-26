@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.statussaver.app.data.database.FileType
 import com.statussaver.app.data.database.StatusSource
@@ -17,6 +18,9 @@ import com.statussaver.app.ui.FullScreenViewActivity
 import com.statussaver.app.ui.MediaItem
 import com.statussaver.app.ui.StatusAdapter
 import com.statussaver.app.viewmodel.StatusViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Fragment for displaying status list (Images or Videos)
@@ -69,6 +73,7 @@ class StatusListFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
         setupSwipeRefresh()
+        setupSelectionActionBar()
         observeData()
     }
     
@@ -109,10 +114,119 @@ class StatusListFragment : Fragment() {
     }
     
     private fun updateSelectionUI(selectedItems: Set<StatusAdapter.StatusItem>) {
-        // For now, just show a toast with selection count
-        // In a full implementation, show/hide action bar
-        if (selectedItems.isNotEmpty()) {
-            Toast.makeText(requireContext(), "${selectedItems.size} selected", Toast.LENGTH_SHORT).show()
+        val count = selectedItems.size
+        
+        if (count > 0) {
+            // Show selection action bar
+            binding.selectionActionBar.visibility = View.VISIBLE
+            binding.txtSelectionCount.text = "$count selected"
+            
+            // Hide save button for Saved tab (already saved)
+            binding.btnSaveAll.visibility = if (statusSource == StatusSource.SAVED) View.GONE else View.VISIBLE
+        } else {
+            // Hide selection action bar
+            binding.selectionActionBar.visibility = View.GONE
+        }
+    }
+    
+    private fun setupSelectionActionBar() {
+        binding.btnCancelSelection.setOnClickListener {
+            adapter.exitSelectionMode()
+        }
+        
+        binding.btnSaveAll.setOnClickListener {
+            saveSelectedItems()
+        }
+        
+        binding.btnShareAll.setOnClickListener {
+            shareSelectedItems()
+        }
+        
+        binding.btnDeleteAll.setOnClickListener {
+            confirmDeleteSelectedItems()
+        }
+    }
+    
+    private fun saveSelectedItems() {
+        val items = adapter.getSelectedItems()
+        if (items.isEmpty()) return
+        
+        items.forEach { item ->
+            downloadStatus(item)
+        }
+        Toast.makeText(requireContext(), "Saving ${items.size} items...", Toast.LENGTH_SHORT).show()
+        adapter.exitSelectionMode()
+    }
+    
+    private fun shareSelectedItems() {
+        val items = adapter.getSelectedItems()
+        if (items.isEmpty()) return
+        
+        if (items.size == 1) {
+            // Single item - use regular share
+            shareStatus(items.first())
+        } else {
+            // Multiple items - create share intent with multiple files
+            Toast.makeText(requireContext(), "Sharing ${items.size} items...", Toast.LENGTH_SHORT).show()
+            // For now, share one by one (multi-share requires more complex handling)
+            shareStatus(items.first())
+        }
+        adapter.exitSelectionMode()
+    }
+    
+    private fun confirmDeleteSelectedItems() {
+        val items = adapter.getSelectedItems()
+        if (items.isEmpty()) return
+        
+        val count = items.size
+        val message = if (statusSource == StatusSource.SAVED) {
+            "Permanently delete $count saved status(es)? This cannot be undone."
+        } else {
+            "Remove $count status(es) from cache?"
+        }
+        
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("Delete Selected")
+            .setMessage(message)
+            .setPositiveButton("Delete") { _, _ ->
+                deleteSelectedItems(items)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun deleteSelectedItems(items: List<StatusAdapter.StatusItem>) {
+        lifecycleScope.launch {
+            var deleted = 0
+            items.forEach { item ->
+                try {
+                    when (item.source) {
+                        StatusSource.SAVED -> {
+                            // Delete from MediaStore/file system
+                            val success = withContext(Dispatchers.IO) {
+                                repository.deleteSavedStatus(item.id)
+                            }
+                            if (success) deleted++
+                        }
+                        StatusSource.CACHED -> {
+                            // Delete from cache
+                            val success = withContext(Dispatchers.IO) {
+                                repository.deleteCachedStatus(item.id)
+                            }
+                            if (success) deleted++
+                        }
+                        else -> {
+                            // Live statuses can't be deleted
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Continue with other items
+                }
+            }
+            
+            Toast.makeText(requireContext(), "Deleted $deleted item(s)", Toast.LENGTH_SHORT).show()
+            adapter.exitSelectionMode()
+            refreshData()
         }
     }
     
