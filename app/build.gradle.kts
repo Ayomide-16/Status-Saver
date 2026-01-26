@@ -88,6 +88,12 @@ dependencies {
     
     // PhotoView for pinch-to-zoom
     implementation("com.github.chrisbanes:PhotoView:2.3.0")
+    
+    // RecyclerView Selection (industry-standard multi-select)
+    implementation("androidx.recyclerview:recyclerview-selection:1.1.0")
+    
+    // Dynamic Animation for smooth selection feedback
+    implementation("androidx.dynamicanimation:dynamicanimation:1.0.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -6,9 +6,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.selection.SelectionPredicates
+import androidx.recyclerview.selection.SelectionTracker
+import androidx.recyclerview.selection.StorageStrategy
 import androidx.recyclerview.widget.GridLayoutManager
 import com.statussaver.app.data.database.FileType
 import com.statussaver.app.data.database.StatusSource
@@ -17,6 +21,8 @@ import com.statussaver.app.databinding.FragmentStatusListBinding
 import com.statussaver.app.ui.FullScreenViewActivity
 import com.statussaver.app.ui.MediaItem
 import com.statussaver.app.ui.StatusAdapter
+import com.statussaver.app.ui.selection.StatusItemDetailsLookup
+import com.statussaver.app.ui.selection.StatusItemKeyProvider
 import com.statussaver.app.viewmodel.StatusViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,6 +30,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Fragment for displaying status list (Images or Videos)
+ * Uses AndroidX RecyclerView Selection for professional multi-select
  */
 class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback {
     
@@ -33,6 +40,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     private val viewModel: StatusViewModel by activityViewModels()
     private lateinit var adapter: StatusAdapter
     private lateinit var repository: StatusRepository
+    private var selectionTracker: SelectionTracker<Long>? = null
     
     private var statusSource: StatusSource = StatusSource.LIVE
     private var fileType: FileType = FileType.IMAGE
@@ -40,6 +48,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     companion object {
         private const val ARG_SOURCE = "source"
         private const val ARG_FILE_TYPE = "file_type"
+        private const val SELECTION_ID = "status-selection"
         
         fun newInstance(source: StatusSource, fileType: FileType): StatusListFragment {
             return StatusListFragment().apply {
@@ -72,21 +81,24 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
+        setupSelectionTracker(savedInstanceState)
         setupSwipeRefresh()
         observeData()
     }
     
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        selectionTracker?.onSaveInstanceState(outState)
+    }
+    
     override fun onResume() {
         super.onResume()
-        // Register as selection callback with MainActivity
         (activity as? com.statussaver.app.MainActivity)?.setSelectionCallback(this)
-        // Refresh download states when returning from fullscreen view
         refreshDownloadStates()
     }
     
     override fun onPause() {
         super.onPause()
-        // Unregister callback when fragment is not visible
         (activity as? com.statussaver.app.MainActivity)?.setSelectionCallback(null)
     }
     
@@ -106,17 +118,14 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     private fun setupRecyclerView() {
         adapter = StatusAdapter(
             showCacheInfo = (statusSource == StatusSource.CACHED),
-            onItemClick = { item -> openFullScreen(item) },
-            onDownloadClick = { item -> downloadStatus(item) },
-            onShareClick = { item -> shareStatus(item) },
-            onLongClick = { item -> 
-                adapter.enterSelectionMode()
-                adapter.toggleSelection(item)
-                true
+            onItemClick = { item -> 
+                // Only open fullscreen if not in selection mode
+                if (selectionTracker?.hasSelection() != true) {
+                    openFullScreen(item)
+                }
             },
-            onSelectionChanged = { selectedItems ->
-                updateSelectionUI(selectedItems)
-            }
+            onDownloadClick = { item -> downloadStatus(item) },
+            onShareClick = { item -> shareStatus(item) }
         )
         
         binding.recyclerView.apply {
@@ -126,40 +135,185 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         }
     }
     
-    private fun shareStatus(item: StatusAdapter.StatusItem) {
-        // Share directly instead of opening fullscreen view
+    private fun setupSelectionTracker(savedInstanceState: Bundle?) {
+        selectionTracker = SelectionTracker.Builder(
+            SELECTION_ID,
+            binding.recyclerView,
+            StatusItemKeyProvider(adapter),
+            StatusItemDetailsLookup(binding.recyclerView),
+            StorageStrategy.createLongStorage()
+        ).withSelectionPredicate(
+            SelectionPredicates.createSelectAnything()
+        ).build()
+        
+        adapter.selectionTracker = selectionTracker
+        
+        // Add selection observer to update UI
+        selectionTracker?.addObserver(object : SelectionTracker.SelectionObserver<Long>() {
+            override fun onSelectionChanged() {
+                val count = selectionTracker?.selection?.size() ?: 0
+                val mainActivity = activity as? com.statussaver.app.MainActivity
+                
+                if (count > 0) {
+                    mainActivity?.enterSelectionMode(statusSource)
+                    mainActivity?.updateSelectionCount(count)
+                } else {
+                    mainActivity?.exitSelectionMode()
+                }
+            }
+        })
+        
+        // Restore selection state
+        savedInstanceState?.let {
+            selectionTracker?.onRestoreInstanceState(it)
+        }
+    }
+    
+    private fun setupSwipeRefresh() {
+        binding.swipeRefresh.setColorSchemeResources(
+            com.statussaver.app.R.color.app_green
+        )
+        binding.swipeRefresh.setOnRefreshListener {
+            refreshData()
+        }
+    }
+    
+    private fun refreshData() {
+        viewModel.refreshStatuses()
+        binding.swipeRefresh.isRefreshing = false
+    }
+    
+    // ========== SelectionCallback Implementation ==========
+    
+    override fun onEnterSelectionMode(source: StatusSource) {
+        // Already handled by tracker observer
+    }
+    
+    override fun onSelectionChanged(count: Int, source: StatusSource) {
+        // Already handled by tracker observer
+    }
+    
+    override fun onExitSelectionMode() {
+        selectionTracker?.clearSelection()
+    }
+    
+    override fun onSaveSelectedClicked() {
+        saveSelectedItems()
+    }
+    
+    override fun onShareSelectedClicked() {
+        shareSelectedItems()
+    }
+    
+    override fun onDeleteSelectedClicked() {
+        confirmDeleteSelectedItems()
+    }
+    
+    override fun onSelectAllClicked() {
+        // Select all items
+        val allIds = adapter.currentList.map { it.id }
+        selectionTracker?.setItemsSelected(allIds, true)
+    }
+    
+    override fun onCancelSelectionClicked() {
+        selectionTracker?.clearSelection()
+    }
+    
+    // ========== Selection Actions ==========
+    
+    private fun saveSelectedItems() {
+        val items = adapter.getSelectedItems()
+        if (items.isEmpty()) return
+        
+        lifecycleScope.launch {
+            var savedCount = 0
+            items.forEach { item ->
+                val success = withContext(Dispatchers.IO) {
+                    repository.saveStatus(item.filename, item.uri)
+                }
+                if (success) savedCount++
+            }
+            Toast.makeText(requireContext(), "$savedCount items saved", Toast.LENGTH_SHORT).show()
+            selectionTracker?.clearSelection()
+            refreshDownloadStates()
+        }
+    }
+    
+    private fun shareSelectedItems() {
+        val items = adapter.getSelectedItems()
+        if (items.isEmpty()) return
+        
         lifecycleScope.launch {
             try {
-                val shareUri = withContext(Dispatchers.IO) {
-                    getShareableUri(item)
+                val uris = withContext(Dispatchers.IO) {
+                    items.mapNotNull { item -> getShareableUri(item) }
                 }
                 
-                if (shareUri == null) {
-                    Toast.makeText(requireContext(), "Unable to share this file", Toast.LENGTH_SHORT).show()
+                if (uris.isEmpty()) {
+                    Toast.makeText(requireContext(), "Unable to share files", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
                 
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = if (item.fileType == FileType.VIDEO) "video/*" else "image/*"
-                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = if (items.all { it.fileType == FileType.IMAGE }) "image/*" 
+                           else if (items.all { it.fileType == FileType.VIDEO }) "video/*"
+                           else "*/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 
                 startActivity(Intent.createChooser(shareIntent, "Share via"))
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error sharing file", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Error sharing files", Toast.LENGTH_SHORT).show()
             }
         }
     }
     
+    private fun confirmDeleteSelectedItems() {
+        val items = adapter.getSelectedItems()
+        if (items.isEmpty()) return
+        
+        val message = when (statusSource) {
+            StatusSource.SAVED -> "Permanently delete ${items.size} saved status(es)?"
+            else -> "Remove ${items.size} item(s) from cache?"
+        }
+        
+        AlertDialog.Builder(requireContext())
+            .setTitle("Delete")
+            .setMessage(message)
+            .setPositiveButton("Delete") { _, _ -> deleteSelectedItems() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun deleteSelectedItems() {
+        val items = adapter.getSelectedItems()
+        if (items.isEmpty()) return
+        
+        lifecycleScope.launch {
+            var deletedCount = 0
+            items.forEach { item ->
+                val success = withContext(Dispatchers.IO) {
+                    when (statusSource) {
+                        StatusSource.SAVED -> repository.deleteSavedStatus(item.id)
+                        else -> repository.deleteCachedStatus(item.id)
+                    }
+                }
+                if (success) deletedCount++
+            }
+            Toast.makeText(requireContext(), "$deletedCount items deleted", Toast.LENGTH_SHORT).show()
+            selectionTracker?.clearSelection()
+        }
+    }
+    
+    // ========== Share Helpers ==========
+    
     private suspend fun getShareableUri(item: StatusAdapter.StatusItem): android.net.Uri? = withContext(Dispatchers.IO) {
         try {
-            // For live statuses, use SAF URI directly
             if (item.source == StatusSource.LIVE && item.uri.isNotEmpty()) {
                 return@withContext android.net.Uri.parse(item.uri)
             }
             
-            // For file paths
             if (item.path.isNotEmpty() && !item.path.startsWith("content://")) {
                 val file = java.io.File(item.path)
                 if (file.exists() && file.canRead()) {
@@ -171,11 +325,8 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                 }
             }
             
-            // For content:// URIs (MediaStore) - try to get actual file path
             if (item.path.startsWith("content://")) {
                 val contentUri = android.net.Uri.parse(item.path)
-                
-                // Try to get actual file path
                 val actualPath = getFilePathFromContentUri(contentUri)
                 if (!actualPath.isNullOrEmpty()) {
                     val file = java.io.File(actualPath)
@@ -187,12 +338,9 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                         )
                     }
                 }
-                
-                // Fallback: copy to cache and share
                 return@withContext copyToCache(contentUri, item.filename)
             }
             
-            // Last resort: try the original URI
             if (item.uri.isNotEmpty()) {
                 return@withContext android.net.Uri.parse(item.uri)
             }
@@ -239,152 +387,75 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         return null
     }
     
-    private fun updateSelectionUI(selectedItems: Set<StatusAdapter.StatusItem>) {
-        val count = selectedItems.size
-        val mainActivity = activity as? com.statussaver.app.MainActivity
-        
-        if (count > 0) {
-            // Enter selection mode in MainActivity
-            if (!adapter.isInSelectionMode()) {
-                mainActivity?.enterSelectionMode(statusSource)
-            }
-            mainActivity?.updateSelectionCount(count)
-        } else {
-            // Exit selection mode
-            mainActivity?.exitSelectionMode()
-        }
-    }
+    // ========== Single Item Actions ==========
     
-    // ========== SelectionCallback Implementation ==========
-    
-    override fun onEnterSelectionMode(source: StatusSource) {
-        adapter.enterSelectionMode()
-    }
-    
-    override fun onSelectionChanged(count: Int, source: StatusSource) {
-        // Handled by updateSelectionUI
-    }
-    
-    override fun onExitSelectionMode() {
-        adapter.exitSelectionMode()
-    }
-    
-    override fun onSaveSelectedClicked() {
-        saveSelectedItems()
-    }
-    
-    override fun onShareSelectedClicked() {
-        shareSelectedItems()
-    }
-    
-    override fun onDeleteSelectedClicked() {
-        confirmDeleteSelectedItems()
-    }
-    
-    override fun onSelectAllClicked() {
-        adapter.selectAll()
-    }
-    
-    override fun onCancelSelectionClicked() {
-        adapter.exitSelectionMode()
-    }
-    
-    private fun saveSelectedItems() {
-        val items = adapter.getSelectedItems()
-        if (items.isEmpty()) return
-        
-        items.forEach { item ->
-            downloadStatus(item)
-        }
-        Toast.makeText(requireContext(), "Saving ${items.size} items...", Toast.LENGTH_SHORT).show()
-        adapter.exitSelectionMode()
-    }
-    
-    private fun shareSelectedItems() {
-        val items = adapter.getSelectedItems()
-        if (items.isEmpty()) return
-        
-        if (items.size == 1) {
-            // Single item - use regular share
-            shareStatus(items.first())
-        } else {
-            // Multiple items - create share intent with multiple files
-            Toast.makeText(requireContext(), "Sharing ${items.size} items...", Toast.LENGTH_SHORT).show()
-            // For now, share one by one (multi-share requires more complex handling)
-            shareStatus(items.first())
-        }
-        adapter.exitSelectionMode()
-    }
-    
-    private fun confirmDeleteSelectedItems() {
-        val items = adapter.getSelectedItems()
-        if (items.isEmpty()) return
-        
-        val count = items.size
-        val message = if (statusSource == StatusSource.SAVED) {
-            "Permanently delete $count saved status(es)? This cannot be undone."
-        } else {
-            "Remove $count status(es) from cache?"
-        }
-        
-        androidx.appcompat.app.AlertDialog.Builder(requireContext())
-            .setTitle("Delete Selected")
-            .setMessage(message)
-            .setPositiveButton("Delete") { _, _ ->
-                deleteSelectedItems(items)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-    
-    private fun deleteSelectedItems(items: List<StatusAdapter.StatusItem>) {
+    private fun shareStatus(item: StatusAdapter.StatusItem) {
         lifecycleScope.launch {
-            var deleted = 0
-            items.forEach { item ->
-                try {
-                    when (item.source) {
-                        StatusSource.SAVED -> {
-                            // Delete from MediaStore/file system
-                            val success = withContext(Dispatchers.IO) {
-                                repository.deleteSavedStatus(item.id)
-                            }
-                            if (success) deleted++
-                        }
-                        StatusSource.CACHED -> {
-                            // Delete from cache
-                            val success = withContext(Dispatchers.IO) {
-                                repository.deleteCachedStatus(item.id)
-                            }
-                            if (success) deleted++
-                        }
-                        else -> {
-                            // Live statuses can't be deleted
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Continue with other items
+            try {
+                val shareUri = withContext(Dispatchers.IO) {
+                    getShareableUri(item)
                 }
+                
+                if (shareUri == null) {
+                    Toast.makeText(requireContext(), "Unable to share this file", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = if (item.fileType == FileType.VIDEO) "video/*" else "image/*"
+                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                
+                startActivity(Intent.createChooser(shareIntent, "Share via"))
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Error sharing file", Toast.LENGTH_SHORT).show()
             }
-            
-            Toast.makeText(requireContext(), "Deleted $deleted item(s)", Toast.LENGTH_SHORT).show()
-            adapter.exitSelectionMode()
-            refreshData()
         }
     }
     
-    private fun setupSwipeRefresh() {
-        binding.swipeRefresh.setColorSchemeResources(
-            com.statussaver.app.R.color.app_green
-        )
-        binding.swipeRefresh.setOnRefreshListener {
-            refreshData()
+    private fun downloadStatus(item: StatusAdapter.StatusItem) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                repository.saveStatus(item.filename, item.uri)
+            }
+            if (result) {
+                Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
+                refreshDownloadStates()
+            } else {
+                Toast.makeText(requireContext(), "Failed to save", Toast.LENGTH_SHORT).show()
+            }
         }
     }
     
-    private fun refreshData() {
-        viewModel.refreshData(statusSource, fileType)
-        binding.swipeRefresh.isRefreshing = false
+    private fun openFullScreen(item: StatusAdapter.StatusItem) {
+        val items = adapter.currentList.map { statusItem ->
+            MediaItem(
+                id = statusItem.id,
+                filename = statusItem.filename,
+                path = statusItem.path,
+                uri = statusItem.uri,
+                fileType = statusItem.fileType,
+                source = statusItem.source,
+                isDownloaded = statusItem.isDownloaded
+            )
+        }
+        
+        val position = adapter.currentList.indexOfFirst { it.id == item.id }
+        
+        val intent = Intent(requireContext(), FullScreenViewActivity::class.java).apply {
+            putParcelableArrayListExtra(FullScreenViewActivity.EXTRA_MEDIA_ITEMS, ArrayList(items))
+            putExtra(FullScreenViewActivity.EXTRA_CURRENT_POSITION, position)
+        }
+        startActivity(intent)
     }
+    
+    private fun updateEmptyState(isEmpty: Boolean) {
+        binding.emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
+        binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+    }
+    
+    // ========== Observe Data ==========
     
     private fun observeData() {
         when (statusSource) {
@@ -392,33 +463,33 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
             StatusSource.SAVED -> observeSavedStatuses()
             StatusSource.CACHED -> observeCachedStatuses()
         }
-        
-        viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
-            binding.swipeRefresh.isRefreshing = isLoading
-        }
-        
-        viewModel.downloadedFilenames.observe(viewLifecycleOwner) { filenames ->
-            adapter.updateDownloadedState(filenames)
-        }
     }
     
     private fun observeLiveStatuses() {
         viewModel.getLiveStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
-            val items = statuses.map { 
-                StatusAdapter.StatusItem(
-                    id = it.filename.hashCode().toLong(),
-                    filename = it.filename,
-                    path = it.path,
-                    uri = it.uri,
-                    fileType = it.fileType,
-                    source = StatusSource.LIVE,
-                    isDownloaded = it.isDownloaded,
-                    cachedAt = 0L,
-                    expiresAt = 0L
-                )
+            try {
+                lifecycleScope.launch {
+                    val downloadedFilenames = withContext(Dispatchers.IO) {
+                        repository.getAllDownloadedFilenames()
+                    }
+                    
+                    val items = statuses.mapNotNull { (filename, uri, type) ->
+                        StatusAdapter.StatusItem(
+                            id = filename.hashCode().toLong(),
+                            filename = filename,
+                            path = "",
+                            uri = uri.toString(),
+                            fileType = type,
+                            source = StatusSource.LIVE,
+                            isDownloaded = downloadedFilenames.contains(filename)
+                        )
+                    }
+                    adapter.submitList(items)
+                    updateEmptyState(items.isEmpty())
+                }
+            } catch (e: Exception) {
+                updateEmptyState(true)
             }
-            adapter.submitList(items)
-            updateEmptyState(items.isEmpty())
         }
     }
     
@@ -426,7 +497,6 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         viewModel.getSavedStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
             try {
                 val items = statuses.mapNotNull { status ->
-                    // Skip items with invalid paths
                     if (status.localPath.isNullOrEmpty() && status.originalUri.isNullOrEmpty()) {
                         return@mapNotNull null
                     }
@@ -440,7 +510,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                         source = StatusSource.SAVED,
                         isDownloaded = true,
                         cachedAt = status.savedAt,
-                        expiresAt = 0L // Saved files don't expire
+                        expiresAt = 0L
                     )
                 }
                 adapter.submitList(items)
@@ -457,78 +527,37 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                 val retentionDays = com.statussaver.app.util.Constants.getRetentionDays(requireContext())
                 val retentionMs = retentionDays * 24L * 60L * 60L * 1000L
                 
-                // Remove duplicates by filename
                 val uniqueStatuses = statuses.distinctBy { it.filename }
                 
-                val items = uniqueStatuses.mapNotNull { status ->
-                    // Skip items with invalid paths
-                    if (status.localPath.isNullOrEmpty()) {
-                        return@mapNotNull null
+                lifecycleScope.launch {
+                    val downloadedFilenames = withContext(Dispatchers.IO) {
+                        repository.getAllDownloadedFilenames()
                     }
                     
-                    StatusAdapter.StatusItem(
-                        id = status.id,
-                        filename = status.filename,
-                        path = status.localPath ?: "",
-                        uri = status.originalUri ?: "",
-                        fileType = status.fileType,
-                        source = StatusSource.CACHED,
-                        isDownloaded = viewModel.isDownloaded(status.filename),
-                        cachedAt = status.savedAt,
-                        expiresAt = status.savedAt + retentionMs
-                    )
+                    val items = uniqueStatuses.mapNotNull { status ->
+                        if (status.localPath.isNullOrEmpty()) {
+                            return@mapNotNull null
+                        }
+                        
+                        val expiresAt = status.savedAt + retentionMs
+                        
+                        StatusAdapter.StatusItem(
+                            id = status.id,
+                            filename = status.filename,
+                            path = status.localPath,
+                            uri = status.originalUri ?: "",
+                            fileType = status.fileType,
+                            source = StatusSource.CACHED,
+                            isDownloaded = downloadedFilenames.contains(status.filename),
+                            cachedAt = status.savedAt,
+                            expiresAt = expiresAt
+                        )
+                    }
+                    adapter.submitList(items)
+                    updateEmptyState(items.isEmpty())
                 }
-                adapter.submitList(items)
-                updateEmptyState(items.isEmpty())
             } catch (e: Exception) {
                 updateEmptyState(true)
-            }
-        }
-    }
-    
-    private fun updateEmptyState(isEmpty: Boolean) {
-        binding.emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
-        binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
-    }
-    
-    private fun openFullScreen(item: StatusAdapter.StatusItem) {
-        // Convert current list to MediaItem for swipe navigation
-        val currentList = adapter.currentList
-        val mediaItems = ArrayList(currentList.map { MediaItem.fromStatusItem(it) })
-        val currentPosition = currentList.indexOfFirst { it.filename == item.filename && it.source == item.source }
-        
-        val intent = Intent(requireContext(), FullScreenViewActivity::class.java).apply {
-            // Pass full list for swipe navigation
-            putParcelableArrayListExtra(FullScreenViewActivity.EXTRA_MEDIA_ITEMS, mediaItems)
-            putExtra(FullScreenViewActivity.EXTRA_CURRENT_POSITION, if (currentPosition >= 0) currentPosition else 0)
-            
-            // Keep legacy extras for backward compatibility
-            putExtra(FullScreenViewActivity.EXTRA_FILE_PATH, item.path)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_URI, item.uri)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_NAME, item.filename)
-            putExtra(FullScreenViewActivity.EXTRA_FILE_TYPE, item.fileType.name)
-            putExtra(FullScreenViewActivity.EXTRA_SOURCE, item.source.name)
-            putExtra(FullScreenViewActivity.EXTRA_IS_DOWNLOADED, item.isDownloaded)
-        }
-        startActivity(intent)
-    }
-    
-    private fun downloadStatus(item: StatusAdapter.StatusItem) {
-        if (item.isDownloaded) {
-            Toast.makeText(requireContext(), "Already saved", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        // Show loading
-        Toast.makeText(requireContext(), "Saving...", Toast.LENGTH_SHORT).show()
-        
-        // Use ViewModel's saveStatus which properly handles MediaStore on Android 10+
-        viewModel.saveStatus(item.filename, item.uri, item.source)
-        
-        // Observe the message for result
-        viewModel.message.observe(viewLifecycleOwner) { message ->
-            message?.let {
-                Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
             }
         }
     }

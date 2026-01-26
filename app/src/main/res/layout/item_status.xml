@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/statusCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="4dp"
     app:cardCornerRadius="12dp"
     app:cardElevation="4dp"
-    app:cardBackgroundColor="?attr/colorSurface">
+    app:cardBackgroundColor="?attr/colorSurface"
+    app:strokeWidth="0dp"
+    app:strokeColor="@color/app_green">
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -32,7 +35,7 @@
             android:id="@+id/selectionOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#4000AA00"
+            android:background="#3000AA00"
             android:visibility="gone" />
 
         <!-- Video Play Indicator -->
@@ -45,15 +48,16 @@
             android:visibility="gone"
             android:contentDescription="Video indicator" />
 
-        <!-- Selection Checkbox (top left, shown in selection mode) -->
-        <CheckBox
-            android:id="@+id/selectionCheckBox"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="start|top"
-            android:layout_margin="6dp"
-            android:buttonTint="@color/app_green"
-            android:visibility="gone" />
+        <!-- Selection Checkmark (top-right, shown in selection mode) -->
+        <ImageView
+            android:id="@+id/selectionCheckMark"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="end|top"
+            android:layout_margin="8dp"
+            android:src="@drawable/ic_circle_outline"
+            android:visibility="gone"
+            android:contentDescription="Selection indicator" />
 
         <!-- Cache Info Overlay -->
         <LinearLayout
@@ -148,4 +152,4 @@
 
     </FrameLayout>
 
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

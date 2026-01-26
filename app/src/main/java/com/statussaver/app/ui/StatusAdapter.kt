@@ -1,12 +1,15 @@
 package com.statussaver.app.ui
 
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
+import android.view.animation.OvershootInterpolator
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.recyclerview.selection.ItemDetailsLookup
+import androidx.recyclerview.selection.SelectionTracker
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -25,17 +28,18 @@ class StatusAdapter(
     private val showCacheInfo: Boolean = false,
     private val onItemClick: (StatusItem) -> Unit,
     private val onDownloadClick: (StatusItem) -> Unit,
-    private val onShareClick: ((StatusItem) -> Unit)? = null,
-    private val onLongClick: ((StatusItem) -> Boolean)? = null,
-    private val onSelectionChanged: ((Set<StatusItem>) -> Unit)? = null
+    private val onShareClick: ((StatusItem) -> Unit)? = null
 ) : ListAdapter<StatusAdapter.StatusItem, StatusAdapter.StatusViewHolder>(StatusDiffCallback()) {
 
     private var downloadedFilenames: Set<String> = emptySet()
     private val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
     
-    // Selection mode state
-    private var selectionMode = false
-    private val selectedItems = mutableSetOf<String>() // Track by filename+source
+    // SelectionTracker integration
+    var selectionTracker: SelectionTracker<Long>? = null
+    
+    init {
+        setHasStableIds(true)
+    }
     
     data class StatusItem(
         val id: Long,
@@ -47,8 +51,23 @@ class StatusAdapter(
         var isDownloaded: Boolean = false,
         val cachedAt: Long = 0L,
         val expiresAt: Long = 0L
-    ) {
-        val selectionKey: String get() = "${filename}_${source.name}"
+    )
+    
+    override fun getItemId(position: Int): Long {
+        return getItem(position).id
+    }
+    
+    fun getPositionForId(id: Long): Int {
+        return currentList.indexOfFirst { it.id == id }
+    }
+    
+    fun getItemForId(id: Long): StatusItem? {
+        return currentList.find { it.id == id }
+    }
+    
+    fun getSelectedItems(): List<StatusItem> {
+        val tracker = selectionTracker ?: return emptyList()
+        return tracker.selection.mapNotNull { id -> getItemForId(id) }
     }
     
     fun updateDownloadedState(filenames: Set<String>) {
@@ -59,59 +78,6 @@ class StatusAdapter(
                 notifyItemChanged(index)
             }
         }
-    }
-    
-    // ========== Selection Mode Methods ==========
-    
-    fun isInSelectionMode(): Boolean = selectionMode
-    
-    fun enterSelectionMode() {
-        if (!selectionMode) {
-            selectionMode = true
-            notifyDataSetChanged()
-        }
-    }
-    
-    fun exitSelectionMode() {
-        if (selectionMode) {
-            selectionMode = false
-            selectedItems.clear()
-            notifyDataSetChanged()
-            onSelectionChanged?.invoke(emptySet())
-        }
-    }
-    
-    fun toggleSelection(item: StatusItem) {
-        val key = item.selectionKey
-        if (selectedItems.contains(key)) {
-            selectedItems.remove(key)
-        } else {
-            selectedItems.add(key)
-        }
-        notifyItemChanged(currentList.indexOfFirst { it.selectionKey == key })
-        notifySelectionChanged()
-    }
-    
-    fun selectAll() {
-        currentList.forEach { selectedItems.add(it.selectionKey) }
-        notifyDataSetChanged()
-        notifySelectionChanged()
-    }
-    
-    fun clearSelection() {
-        selectedItems.clear()
-        notifyDataSetChanged()
-        notifySelectionChanged()
-    }
-    
-    fun getSelectedItems(): List<StatusItem> {
-        return currentList.filter { selectedItems.contains(it.selectionKey) }
-    }
-    
-    fun getSelectedCount(): Int = selectedItems.size
-    
-    private fun notifySelectionChanged() {
-        onSelectionChanged?.invoke(getSelectedItems().toSet())
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StatusViewHolder {
@@ -125,7 +91,9 @@ class StatusAdapter(
         val updatedItem = item.copy(
             isDownloaded = downloadedFilenames.contains(item.filename) || item.source == StatusSource.SAVED
         )
-        holder.bind(updatedItem, selectionMode, selectedItems.contains(item.selectionKey))
+        val isSelected = selectionTracker?.isSelected(item.id) ?: false
+        val isInSelectionMode = selectionTracker?.hasSelection() ?: false
+        holder.bind(updatedItem, isInSelectionMode, isSelected)
     }
 
     inner class StatusViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -134,13 +102,25 @@ class StatusAdapter(
         private val btnDownload: FloatingActionButton = itemView.findViewById(R.id.btnDownload)
         private val btnShare: FloatingActionButton? = itemView.findViewById(R.id.btnShare)
         private val checkMark: ImageView = itemView.findViewById(R.id.checkMark)
-        private val selectionCheckBox: CheckBox? = itemView.findViewById(R.id.selectionCheckBox)
+        private val selectionCheckMark: ImageView? = itemView.findViewById(R.id.selectionCheckMark)
         private val cacheInfoLayout: LinearLayout = itemView.findViewById(R.id.cacheInfoLayout)
         private val txtCacheDate: TextView = itemView.findViewById(R.id.txtCacheDate)
         private val txtExpiryDate: TextView = itemView.findViewById(R.id.txtExpiryDate)
         private val selectionOverlay: View? = itemView.findViewById(R.id.selectionOverlay)
+        private val cardView: com.google.android.material.card.MaterialCardView = 
+            itemView.findViewById(R.id.statusCard)
+
+        private var currentItem: StatusItem? = null
+
+        fun getItemDetails(): ItemDetailsLookup.ItemDetails<Long> =
+            object : ItemDetailsLookup.ItemDetails<Long>() {
+                override fun getPosition(): Int = bindingAdapterPosition
+                override fun getSelectionKey(): Long? = currentItem?.id
+            }
 
         fun bind(item: StatusItem, inSelectionMode: Boolean, isSelected: Boolean) {
+            currentItem = item
+            
             // Load thumbnail
             when (item.source) {
                 StatusSource.LIVE -> loadFromUri(item)
@@ -164,50 +144,86 @@ class StatusAdapter(
                 cacheInfoLayout.visibility = View.GONE
             }
             
-            // Handle selection mode UI
+            // Apply selection visual feedback
+            applySelectionState(isSelected, inSelectionMode)
+            
+            // Handle button visibility
             if (inSelectionMode) {
-                // Show selection checkbox
-                selectionCheckBox?.visibility = View.VISIBLE
-                selectionCheckBox?.isChecked = isSelected
-                selectionOverlay?.visibility = if (isSelected) View.VISIBLE else View.GONE
-                
                 // Hide action buttons in selection mode
                 btnDownload.visibility = View.GONE
                 btnShare?.visibility = View.GONE
                 checkMark.visibility = View.GONE
-                
-                // Click toggles selection
-                itemView.setOnClickListener { toggleSelection(item) }
-                itemView.setOnLongClickListener { true } // Consume long click
             } else {
-                // Normal mode
-                selectionCheckBox?.visibility = View.GONE
-                selectionOverlay?.visibility = View.GONE
-                
-                // For Saved tab: show share button instead of checkmark
+                // Normal mode - show appropriate buttons
                 if (item.source == StatusSource.SAVED) {
+                    // Saved tab: show share button
                     btnDownload.visibility = View.GONE
                     checkMark.visibility = View.GONE
                     btnShare?.visibility = View.VISIBLE
                     btnShare?.setOnClickListener { onShareClick?.invoke(item) }
                 } else if (item.isDownloaded) {
-                    // For other tabs with downloaded items
+                    // Downloaded: show checkmark
                     btnDownload.visibility = View.GONE
                     checkMark.visibility = View.VISIBLE
                     btnShare?.visibility = View.GONE
                 } else {
-                    // Not downloaded
+                    // Not downloaded: show download button
                     btnDownload.visibility = View.VISIBLE
                     checkMark.visibility = View.GONE
                     btnShare?.visibility = View.GONE
                     btnDownload.setOnClickListener { onDownloadClick(item) }
                 }
                 
-                itemView.setOnClickListener { onItemClick(item) }
-                itemView.setOnLongClickListener { 
-                    onLongClick?.invoke(item) ?: false
+                // Normal click opens fullscreen
+                itemView.setOnClickListener { 
+                    if (selectionTracker?.hasSelection() != true) {
+                        onItemClick(item) 
+                    }
                 }
             }
+        }
+        
+        private fun applySelectionState(isSelected: Boolean, inSelectionMode: Boolean) {
+            // Animate scale
+            val targetScale = if (isSelected) 0.95f else 1.0f
+            itemView.animate()
+                .scaleX(targetScale)
+                .scaleY(targetScale)
+                .setDuration(200)
+                .setInterpolator(OvershootInterpolator())
+                .start()
+            
+            // Thumbnail alpha
+            imageView.alpha = if (isSelected) 0.7f else 1.0f
+            
+            // Selection checkmark (top-right)
+            selectionCheckMark?.let { checkmark ->
+                if (inSelectionMode) {
+                    checkmark.visibility = View.VISIBLE
+                    if (isSelected) {
+                        checkmark.setImageResource(R.drawable.ic_check_circle)
+                        checkmark.alpha = 1f
+                    } else {
+                        checkmark.setImageResource(R.drawable.ic_circle_outline)
+                        checkmark.alpha = 0.6f
+                    }
+                } else {
+                    checkmark.visibility = View.GONE
+                }
+            }
+            
+            // Selection overlay
+            selectionOverlay?.visibility = if (isSelected) View.VISIBLE else View.GONE
+            
+            // Card stroke/border
+            val strokeWidth = if (isSelected) 4 else 0
+            val strokeColor = if (isSelected) {
+                cardView.context.getColor(R.color.app_green)
+            } else {
+                0
+            }
+            cardView.strokeWidth = strokeWidth
+            cardView.strokeColor = strokeColor
         }
         
         private fun loadFromUri(item: StatusItem) {
@@ -250,12 +266,12 @@ class StatusAdapter(
             }
         }
     }
-
+    
     class StatusDiffCallback : DiffUtil.ItemCallback<StatusItem>() {
         override fun areItemsTheSame(oldItem: StatusItem, newItem: StatusItem): Boolean {
-            return oldItem.filename == newItem.filename && oldItem.source == newItem.source
+            return oldItem.id == newItem.id
         }
-
+        
         override fun areContentsTheSame(oldItem: StatusItem, newItem: StatusItem): Boolean {
             return oldItem == newItem
         }
