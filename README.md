@@ -5,7 +5,7 @@ A personal Android app for automatically backing up WhatsApp status media files.
 ## Features
 - One-time persistent access to WhatsApp status folder via Storage Access Framework (SAF)
 - Automatic background monitoring and backup of new status files
-- 7-day retention period for backed-up media
+- 7-60 day retention period for all status files, instead of traditional 24 hours
 - Grid view display of saved statuses
 - Battery-optimized background service using WorkManager
 
