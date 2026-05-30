@@ -4,9 +4,8 @@
 
     <item
         android:id="@+id/action_refresh"
-        android:icon="@drawable/ic_refresh"
         android:title="Refresh"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="never" />
 
     <item
         android:id="@+id/action_autosave"
@@ -32,6 +31,11 @@
     <item
         android:id="@+id/action_privacy_policy"
         android:title="Privacy Policy"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_theme_toggle"
+        android:title="Toggle Theme"
         app:showAsAction="never" />
 
 </menu>

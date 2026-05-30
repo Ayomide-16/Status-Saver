@@ -108,7 +108,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         viewModel.downloadedFilenames.observe(viewLifecycleOwner) { filenames ->
             if (currentItems.isNotEmpty()) {
                 currentItems = currentItems.map { item ->
-                    val isDownloaded = filenames.contains(item.filename) || item.source == StatusSource.SAVED
+                    val isDownloaded = filenames.contains("${item.filename}|${item.source}") || item.source == StatusSource.SAVED
                     if (item.isDownloaded != isDownloaded) item.copy(isDownloaded = isDownloaded) else item
                 }
                 adapter.submitList(currentItems)
@@ -223,50 +223,60 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     // ========== Selection Actions ==========
     
     private fun saveSelectedItems() {
-        val items = adapter.getSelectedItems()
-        if (items.isEmpty()) return
+        val itemsToSave = adapter.getSelectedItems()
+        if (itemsToSave.isEmpty()) return
         
+        val ctx = context ?: return
         lifecycleScope.launch {
-            var savedCount = 0
-            items.forEach { item ->
-                val success = withContext(Dispatchers.IO) {
-                    repository.saveStatus(item.filename, item.uri)
+            val savedCount = withContext(Dispatchers.IO) {
+                var successCount = 0
+                for (item in itemsToSave) {
+                    val success = if (statusSource == StatusSource.CACHED) {
+                        val cachedStatus = repository.getCachedStatusByFilename(item.filename)
+                        if (cachedStatus != null) {
+                            repository.saveCachedStatus(cachedStatus)
+                        } else {
+                            repository.saveStatus(item.filename, item.uri, item.source)
+                        }
+                    } else {
+                        repository.saveStatus(item.filename, item.uri, item.source)
+                    }
+                    if (success) successCount++
                 }
-                if (success) savedCount++
+                successCount
             }
-            Toast.makeText(requireContext(), "$savedCount items saved", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, "$savedCount items saved", Toast.LENGTH_SHORT).show()
             selectionTracker?.clearSelection()
             viewModel.loadDownloadedFilenames()
         }
     }
     
     private fun shareSelectedItems() {
-        val items = adapter.getSelectedItems()
-        if (items.isEmpty()) return
+        val itemsToShare = adapter.getSelectedItems()
+        if (itemsToShare.isEmpty()) return
         
+        val ctx = context ?: return
         lifecycleScope.launch {
             try {
-                val ctx = requireContext()
                 val uris = withContext(Dispatchers.IO) {
-                    items.mapNotNull { item -> getShareableUri(ctx, item) }
+                    itemsToShare.mapNotNull { item -> getShareableUri(ctx, item) }
                 }
                 
                 if (uris.isEmpty()) {
-                    Toast.makeText(requireContext(), "Unable to share files", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "Unable to share files", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
                 
                 val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                    type = if (items.all { it.fileType == FileType.IMAGE }) "image/*" 
-                           else if (items.all { it.fileType == FileType.VIDEO }) "video/*"
-                           else "*/*"
+                    type = "*/*"
                     putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 
                 startActivity(Intent.createChooser(shareIntent, "Share via"))
+                selectionTracker?.clearSelection()
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error sharing files", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "Error sharing files", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -289,21 +299,23 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     }
     
     private fun deleteSelectedItems() {
-        val items = adapter.getSelectedItems()
-        if (items.isEmpty()) return
+        val itemsToDelete = adapter.getSelectedItems()
+        if (itemsToDelete.isEmpty()) return
         
+        val ctx = context ?: return
         lifecycleScope.launch {
-            var deletedCount = 0
-            items.forEach { item ->
-                val success = withContext(Dispatchers.IO) {
-                    when (statusSource) {
+            val deletedCount = withContext(Dispatchers.IO) {
+                var count = 0
+                itemsToDelete.forEach { item ->
+                    val success = when (statusSource) {
                         StatusSource.SAVED -> repository.deleteSavedStatus(item.id)
                         else -> repository.deleteCachedStatus(item.id)
                     }
+                    if (success) count++
                 }
-                if (success) deletedCount++
+                count
             }
-            Toast.makeText(requireContext(), "$deletedCount items deleted", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, "$deletedCount items deleted", Toast.LENGTH_SHORT).show()
             selectionTracker?.clearSelection()
         }
     }
@@ -392,15 +404,15 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     // ========== Single Item Actions ==========
     
     private fun shareStatus(item: StatusAdapter.StatusItem) {
+        val ctx = context ?: return
         lifecycleScope.launch {
             try {
-                val ctx = requireContext()
                 val shareUri = withContext(Dispatchers.IO) {
                     getShareableUri(ctx, item)
                 }
                 
                 if (shareUri == null) {
-                    Toast.makeText(requireContext(), "Unable to share this file", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "Unable to share this file", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
                 
@@ -412,21 +424,31 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                 
                 startActivity(Intent.createChooser(shareIntent, "Share via"))
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error sharing file", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "Error sharing file", Toast.LENGTH_SHORT).show()
             }
         }
     }
     
     private fun downloadStatus(item: StatusAdapter.StatusItem) {
+        val ctx = context ?: return
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                repository.saveStatus(item.filename, item.uri)
+                if (item.source == StatusSource.CACHED) {
+                    val cachedStatus = repository.getCachedStatusByFilename(item.filename)
+                    if (cachedStatus != null) {
+                        repository.saveCachedStatus(cachedStatus)
+                    } else {
+                        repository.saveStatus(item.filename, item.uri, item.source)
+                    }
+                } else {
+                    repository.saveStatus(item.filename, item.uri, item.source)
+                }
             }
             if (result) {
-                Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "Saved!", Toast.LENGTH_SHORT).show()
                 viewModel.loadDownloadedFilenames()
             } else {
-                Toast.makeText(requireContext(), "Failed to save", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "Failed to save", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -445,11 +467,11 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         }
         
         val position = adapter.currentList.indexOfFirst { it.id == item.id }
-        
-        FullScreenViewActivity.setPendingItems(ArrayList(items))
+        if (position < 0) return
         
         val intent = Intent(requireContext(), FullScreenViewActivity::class.java).apply {
             putExtra(FullScreenViewActivity.EXTRA_CURRENT_POSITION, position)
+            putParcelableArrayListExtra(FullScreenViewActivity.EXTRA_MEDIA_ITEMS, ArrayList(items))
         }
         startActivity(intent)
     }
@@ -457,12 +479,20 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     private fun updateEmptyState(isEmpty: Boolean) {
         binding.emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
         binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+        
+        if (isEmpty) {
+            binding.emptyText.text = when (statusSource) {
+                StatusSource.LIVE -> "No statuses found"
+                StatusSource.SAVED -> "No saved statuses"
+                StatusSource.CACHED -> "No recent statuses"
+            }
+        }
     }
     
     // ========== Observe Data ==========
     
     private fun observeData() {
-        viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
+        viewModel.isLoading(statusSource, fileType).observe(viewLifecycleOwner) { isLoading ->
             binding.swipeRefresh.isRefreshing = isLoading
         }
         
@@ -485,7 +515,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                         uri = file.uri,
                         fileType = file.fileType,
                         source = StatusSource.LIVE,
-                        isDownloaded = downloadedFilenames.contains(file.filename)
+                        isDownloaded = downloadedFilenames.contains("${file.filename}|${StatusSource.LIVE}")
                     )
                 }
                 adapter.submitList(currentItems)
@@ -547,7 +577,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                         uri = status.originalUri ?: "",
                         fileType = status.fileType,
                         source = StatusSource.CACHED,
-                        isDownloaded = downloadedFilenames.contains(status.filename),
+                        isDownloaded = downloadedFilenames.contains("${status.filename}|${status.source}"),
                         cachedAt = status.savedAt,
                         expiresAt = expiresAt
                     )

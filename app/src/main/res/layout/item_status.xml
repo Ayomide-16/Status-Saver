@@ -4,9 +4,9 @@
     android:id="@+id/statusCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="4dp"
+    android:layout_margin="1dp"
     app:cardCornerRadius="12dp"
-    app:cardElevation="4dp"
+    app:cardElevation="0dp"
     app:cardBackgroundColor="?attr/colorSurface"
     app:strokeWidth="0dp"
     app:strokeColor="@color/app_green">
@@ -97,58 +97,47 @@
         </LinearLayout>
 
         <!-- Action Button Container -->
-        <FrameLayout
+        <LinearLayout
             android:id="@+id/downloadContainer"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="24dp"
             android:layout_gravity="bottom|end"
-            android:layout_margin="6dp"
-            android:clipChildren="false"
-            android:clipToPadding="false">
+            android:layout_margin="8dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:background="@drawable/pill_background"
+            android:paddingHorizontal="8dp">
 
-            <!-- Download Button - Mini FAB -->
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
+            <!-- Download Button -->
+            <ImageView
                 android:id="@+id/btnDownload"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
                 android:src="@drawable/ic_download"
-                android:scaleType="center"
                 android:contentDescription="Download"
-                app:fabSize="mini"
-                app:fabCustomSize="36dp"
-                app:maxImageSize="18dp"
-                app:elevation="2dp"
-                app:backgroundTint="@color/app_green"
                 app:tint="@android:color/white" />
 
-            <!-- Share Button - Mini FAB (for Saved tab) -->
-            <com.google.android.material.floatingactionbutton.FloatingActionButton
+            <!-- Share Button (for Saved tab) -->
+            <ImageView
                 android:id="@+id/btnShare"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
                 android:src="@drawable/ic_share"
-                android:scaleType="center"
                 android:contentDescription="Share"
                 android:visibility="gone"
-                app:fabSize="mini"
-                app:fabCustomSize="36dp"
-                app:maxImageSize="18dp"
-                app:elevation="2dp"
-                app:backgroundTint="@color/app_green"
                 app:tint="@android:color/white" />
 
-            <!-- Double Checkmark (Saved Indicator for non-saved tabs) -->
+            <!-- Saved Checkmark Indicator -->
             <ImageView
                 android:id="@+id/checkMark"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
                 android:src="@drawable/ic_double_check"
-                android:padding="8dp"
-                android:background="@drawable/circle_bg_saved"
                 android:contentDescription="Saved"
-                android:visibility="gone" />
+                android:visibility="gone"
+                app:tint="@android:color/white" />
 
-        </FrameLayout>
+        </LinearLayout>
 
     </FrameLayout>
 

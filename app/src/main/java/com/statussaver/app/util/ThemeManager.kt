@@ -47,8 +47,8 @@ object ThemeManager {
     fun applyTheme(activity: AppCompatActivity) {
         val theme = getCurrentTheme(activity)
         when (theme) {
-            THEME_GREEN -> activity.setTheme(R.style.Theme_StatusSaver_Green)
-            THEME_DARK -> activity.setTheme(R.style.Theme_StatusSaver_Dark)
+            THEME_GREEN -> activity.setTheme(R.style.Theme_StatusSaver)
+            THEME_DARK -> activity.setTheme(R.style.Theme_StatusSaver)
         }
     }
     
@@ -64,9 +64,9 @@ object ThemeManager {
      */
     fun getThemeResId(context: Context): Int {
         return when (getCurrentTheme(context)) {
-            THEME_GREEN -> R.style.Theme_StatusSaver_Green
-            THEME_DARK -> R.style.Theme_StatusSaver_Dark
-            else -> R.style.Theme_StatusSaver_Green
+            THEME_GREEN -> R.style.Theme_StatusSaver
+            THEME_DARK -> R.style.Theme_StatusSaver
+            else -> R.style.Theme_StatusSaver
         }
     }
 }

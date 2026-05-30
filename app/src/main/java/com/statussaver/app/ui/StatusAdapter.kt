@@ -219,6 +219,7 @@ class StatusAdapter(
             if (item.fileType == FileType.VIDEO) {
                 imageView.load(uri) {
                     crossfade(true)
+                    size(512)
                     placeholder(R.drawable.placeholder)
                     error(R.drawable.placeholder)
                     decoderFactory { result, options, _ ->
@@ -239,6 +240,7 @@ class StatusAdapter(
             if (item.fileType == FileType.VIDEO) {
                 imageView.load(file) {
                     crossfade(true)
+                    size(512)
                     placeholder(R.drawable.placeholder)
                     error(R.drawable.placeholder)
                     decoderFactory { result, options, _ ->

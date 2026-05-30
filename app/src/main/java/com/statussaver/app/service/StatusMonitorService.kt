@@ -23,16 +23,20 @@ class StatusMonitorService : Service() {
     
     companion object {
         private const val TAG = "StatusMonitorService"
-        private const val CHECK_INTERVAL_MS = 30_000L // Check every 30 seconds
+        private const val CHECK_INTERVAL_MS = 300_000L // Check every 5 minutes
         
         fun start(context: Context) {
-            val intent = Intent(context, StatusMonitorService::class.java).apply {
-                action = Constants.SERVICE_ACTION_START
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                val intent = Intent(context, StatusMonitorService::class.java).apply {
+                    action = Constants.SERVICE_ACTION_START
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start service: ${e.message}")
             }
         }
         
@@ -80,8 +84,12 @@ class StatusMonitorService : Service() {
     private fun startMonitoring() {
         if (monitorJob?.isActive == true) return
         
-        val notification = createNotification()
-        startForeground(Constants.NOTIFICATION_ID, notification)
+        try {
+            val notification = createNotification()
+            startForeground(Constants.NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground: ${e.message}")
+        }
         
         monitorJob = serviceScope.launch {
             while (isActive) {

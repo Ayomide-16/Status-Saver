@@ -2,14 +2,14 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/nav_live"
-        android:icon="@drawable/ic_live"
+        android:icon="@drawable/nav_live_selector"
         android:title="Live" />
     <item
         android:id="@+id/nav_saved"
-        android:icon="@drawable/ic_saved"
+        android:icon="@drawable/nav_saved_selector"
         android:title="Saved" />
     <item
         android:id="@+id/nav_cached"
-        android:icon="@drawable/ic_cached"
+        android:icon="@drawable/nav_recent_selector"
         android:title="Recent" />
 </menu>

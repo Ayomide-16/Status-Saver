@@ -33,9 +33,7 @@ class StatusRepository(private val context: Context) {
     // ========== Directory Management ==========
     
     fun getCacheDirectory(): File {
-        val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), Constants.CACHE_FOLDER_NAME)
-        if (!dir.exists()) dir.mkdirs()
-        return dir
+        return File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), Constants.CACHE_FOLDER_NAME)
     }
     
     /**
@@ -43,11 +41,7 @@ class StatusRepository(private val context: Context) {
      * Creates "SA Status Saver" folder in device root storage.
      */
     fun getSavedDirectory(): File {
-        val dir = File(Environment.getExternalStorageDirectory(), PUBLIC_FOLDER_NAME)
-        if (!dir.exists()) {
-            dir.mkdirs()
-        }
-        return dir
+        return File(Environment.getExternalStorageDirectory(), PUBLIC_FOLDER_NAME)
     }
     
     /**
@@ -383,7 +377,7 @@ class StatusRepository(private val context: Context) {
     suspend fun getLiveStatuses(fileType: FileType? = null): List<StatusFile> = withContext(Dispatchers.IO) {
         try {
             val statusFiles = SAFHelper.listStatusFiles(context)
-            val downloadedFilenames = statusDao.getAllDownloadedFilenames().toSet()
+            val downloadedFilenames = statusDao.getAllDownloadedKeys().toSet()
             
             statusFiles
                 .filter { file ->
@@ -450,6 +444,7 @@ class StatusRepository(private val context: Context) {
             }
             
             val cacheDir = getCacheDirectory()
+            if (!cacheDir.exists()) cacheDir.mkdirs()
             val destFile = File(cacheDir, filename)
             
             // Copy file
@@ -558,7 +553,7 @@ class StatusRepository(private val context: Context) {
      * Save a live status (from SAF) to public SA Status Saver folder
      * Uses MediaStore API on Android 10+ for guaranteed compatibility
      */
-    suspend fun saveStatus(filename: String, sourceUri: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun saveStatus(filename: String, sourceUri: String, source: StatusSource): Boolean = withContext(Dispatchers.IO) {
         try {
             val uri = Uri.parse(sourceUri)
             val isVideo = SAFHelper.isVideoFile(filename)
@@ -599,6 +594,7 @@ class StatusRepository(private val context: Context) {
             // Mark as downloaded
             val downloaded = DownloadedStatus(
                 filename = filename,
+                source = source,
                 originalPath = sourceUri,
                 savedPath = savedPath
             )
@@ -668,6 +664,7 @@ class StatusRepository(private val context: Context) {
             // Mark as downloaded
             val downloaded = DownloadedStatus(
                 filename = cachedStatus.filename,
+                source = StatusSource.CACHED,
                 originalPath = cachedStatus.originalUri,
                 savedPath = savedPath
             )
@@ -683,22 +680,23 @@ class StatusRepository(private val context: Context) {
     
     // ========== Download State ==========
     
-    suspend fun isDownloaded(filename: String): Boolean {
-        return statusDao.isDownloaded(filename)
+    suspend fun isDownloaded(filename: String, source: StatusSource): Boolean {
+        return statusDao.isDownloaded(filename, source)
     }
     
     fun getAllDownloaded(): LiveData<List<DownloadedStatus>> {
         return statusDao.getAllDownloaded()
     }
     
-    suspend fun getAllDownloadedFilenames(): Set<String> {
-        return statusDao.getAllDownloadedFilenames().toSet()
+    suspend fun getAllDownloadedKeys(): Set<String> {
+        return statusDao.getAllDownloadedKeys().toSet()
     }
     
-    suspend fun markAsDownloadedDirect(filename: String, originalUri: String, savedPath: String) {
+    suspend fun markAsDownloadedDirect(filename: String, source: StatusSource, originalUri: String, savedPath: String) {
         withContext(Dispatchers.IO) {
             val downloaded = DownloadedStatus(
                 filename = filename,
+                source = source,
                 originalPath = originalUri,
                 savedPath = savedPath
             )
@@ -724,25 +722,38 @@ class StatusRepository(private val context: Context) {
     
     suspend fun deleteStatus(status: StatusEntity): Boolean = withContext(Dispatchers.IO) {
         try {
-            val file = File(status.localPath)
-            if (file.exists()) {
-                val absolutePath = file.absolutePath
-                file.delete()
-                
-                // P2-11: Delete from MediaStore to remove ghost entries
+            if (status.localPath.startsWith("content://")) {
                 try {
-                    val uri = MediaStore.Files.getContentUri("external")
-                    val where = "${MediaStore.MediaColumns.DATA}=?"
-                    val args = arrayOf(absolutePath)
-                    context.contentResolver.delete(uri, where, args)
+                    val uri = Uri.parse(status.localPath)
+                    context.contentResolver.delete(uri, null, null)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error removing MediaStore entry: ${e.message}")
+                    Log.e(TAG, "Error deleting content URI: ${e.message}")
+                }
+            } else {
+                val file = File(status.localPath)
+                if (file.exists()) {
+                    val absolutePath = file.absolutePath
+                    file.delete()
+                    
+                    // P2-11: Delete from MediaStore to remove ghost entries
+                    try {
+                        val uri = MediaStore.Files.getContentUri("external")
+                        val where = "${MediaStore.MediaColumns.DATA}=?"
+                        val args = arrayOf(absolutePath)
+                        context.contentResolver.delete(uri, where, args)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error removing MediaStore entry: ${e.message}")
+                    }
                 }
             }
             statusDao.deleteStatus(status)
             
             if (status.source == StatusSource.SAVED) {
-                statusDao.removeDownloadedStatus(status.filename)
+                // If we're deleting a saved status, we don't know the original source,
+                // so we might need to remove all downloaded statuses with this filename
+                // For now just pass StatusSource.LIVE as a fallback or fix DAO
+                statusDao.removeDownloadedStatus(status.filename, StatusSource.LIVE)
+                statusDao.removeDownloadedStatus(status.filename, StatusSource.CACHED)
             }
             
             Log.d(TAG, "Deleted status: ${status.filename}")
@@ -795,13 +806,53 @@ class StatusRepository(private val context: Context) {
             val statusFiles = SAFHelper.listStatusFiles(context)
             Log.d(TAG, "Found ${statusFiles.size} status files")
             
-            statusFiles.forEach { documentFile ->
-                val result = cacheStatus(documentFile)
-                if (result != null) {
-                    cached++
-                } else {
-                    skipped++
+            val filenames = statusFiles.mapNotNull { it.name }
+            // Process in chunks to avoid SQLite limits
+            val existingFilenames = mutableSetOf<String>()
+            filenames.chunked(900).forEach { chunk ->
+                existingFilenames.addAll(statusDao.getExistingFilenames(chunk, StatusSource.CACHED))
+            }
+            
+            val toCache = statusFiles.filter { it.name !in existingFilenames }
+            skipped += statusFiles.size - toCache.size
+            
+            val entitiesToInsert = mutableListOf<StatusEntity>()
+            val cacheDir = getCacheDirectory()
+            if (!cacheDir.exists()) cacheDir.mkdirs()
+            
+            toCache.forEach { documentFile ->
+                try {
+                    val filename = documentFile.name ?: return@forEach
+                    val destFile = File(cacheDir, filename)
+                    
+                    context.contentResolver.openInputStream(documentFile.uri)?.use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    
+                    if (destFile.exists()) {
+                        val fileType = if (SAFHelper.isVideoFile(filename)) FileType.VIDEO else FileType.IMAGE
+                        entitiesToInsert.add(
+                            StatusEntity(
+                                filename = filename,
+                                originalUri = documentFile.uri.toString(),
+                                localPath = destFile.absolutePath,
+                                fileType = fileType,
+                                source = StatusSource.CACHED,
+                                createdAt = documentFile.lastModified(),
+                                fileSize = destFile.length()
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to cache individual file: ${e.message}")
                 }
+            }
+            
+            if (entitiesToInsert.isNotEmpty()) {
+                val insertedIds = statusDao.insertAll(entitiesToInsert)
+                cached = insertedIds.size
             }
             
             cleanupOldCache()

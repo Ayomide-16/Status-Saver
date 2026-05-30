@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.MediaController
 import android.widget.TextView
@@ -70,9 +71,11 @@ class FullScreenViewActivity : AppCompatActivity() {
     private lateinit var viewPager: ViewPager2
     private lateinit var imageView: ImageView
     private lateinit var videoView: VideoView
-    private lateinit var fabDownload: FloatingActionButton
-    private lateinit var fabShare: FloatingActionButton
+    private lateinit var fabDownload: ImageView
+    private lateinit var fabShare: ImageView
     private lateinit var pageIndicator: TextView
+    private lateinit var btnClose: ImageButton
+    private lateinit var bottomActionLayout: View
 
     private lateinit var repository: StatusRepository
     private var adapter: FullScreenMediaAdapter? = null
@@ -95,6 +98,8 @@ class FullScreenViewActivity : AppCompatActivity() {
         fabDownload = findViewById(R.id.fabDownload)
         fabShare = findViewById(R.id.fabShare)
         pageIndicator = findViewById(R.id.pageIndicator)
+        btnClose = findViewById(R.id.btnClose)
+        bottomActionLayout = findViewById(R.id.bottomActionLayout)
 
         // P0-07: Read from static holder first to avoid Binder limit
         mediaItems = pendingMediaItems ?: run {
@@ -182,31 +187,20 @@ class FullScreenViewActivity : AppCompatActivity() {
     }
     
     private fun showFabs() {
-        hideHandler.removeCallbacks(hideRunnable)
-        
         if (!fabsVisible) {
+            bottomActionLayout.animate().alpha(1f).setDuration(200).withStartAction {
+                bottomActionLayout.visibility = View.VISIBLE
+            }
+            btnClose.animate().alpha(1f).setDuration(200).withStartAction {
+                btnClose.visibility = View.VISIBLE
+            }
+            if (mediaItems?.size ?: 0 > 1) {
+                pageIndicator.animate().alpha(1f).setDuration(200).withStartAction {
+                    pageIndicator.visibility = View.VISIBLE
+                }
+            }
             fabsVisible = true
-            fabDownload.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setDuration(200)
-                .setInterpolator(AccelerateDecelerateInterpolator())
-                .withStartAction { fabDownload.visibility = View.VISIBLE }
-                .start()
-            fabShare.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setDuration(200)
-                .setInterpolator(AccelerateDecelerateInterpolator())
-                .withStartAction { fabShare.visibility = View.VISIBLE }
-                .start()
-            pageIndicator.animate()
-                .alpha(1f)
-                .setDuration(200)
-                .start()
         }
-        
-        // Always reschedule auto-hide for videos
         scheduleAutoHideIfVideo()
     }
     
@@ -214,25 +208,18 @@ class FullScreenViewActivity : AppCompatActivity() {
         // Only hide for videos
         val currentItem = getCurrentItem()
         if (currentItem?.fileType == FileType.VIDEO) {
-            fabsVisible = false
-            fabDownload.animate()
-                .alpha(0f)
-                .translationY(100f)
-                .setDuration(200)
-                .setInterpolator(AccelerateDecelerateInterpolator())
-                .withEndAction { fabDownload.visibility = View.GONE }
-                .start()
-            fabShare.animate()
-                .alpha(0f)
-                .translationY(100f)
-                .setDuration(200)
-                .setInterpolator(AccelerateDecelerateInterpolator())
-                .withEndAction { fabShare.visibility = View.GONE }
-                .start()
-            pageIndicator.animate()
-                .alpha(0f)
-                .setDuration(200)
-                .start()
+            if (fabsVisible) {
+                bottomActionLayout.animate().alpha(0f).setDuration(200).withEndAction {
+                    bottomActionLayout.visibility = View.GONE
+                }
+                btnClose.animate().alpha(0f).setDuration(200).withEndAction {
+                    btnClose.visibility = View.GONE
+                }
+                pageIndicator.animate().alpha(0f).setDuration(200).withEndAction {
+                    pageIndicator.visibility = View.GONE
+                }
+                fabsVisible = false
+            }
         }
     }
 
@@ -324,6 +311,10 @@ class FullScreenViewActivity : AppCompatActivity() {
             showFabs() // Keep visible when interacting
             shareStatus()
         }
+
+        btnClose.setOnClickListener {
+            finish()
+        }
     }
 
     private fun getCurrentItem(): MediaItem? {
@@ -354,10 +345,11 @@ class FullScreenViewActivity : AppCompatActivity() {
         val currentItem = getCurrentItem()
         val itemFileName = currentItem?.filename ?: fileName ?: return
         val itemUri = currentItem?.uri ?: fileUri ?: return
+        val itemSource = currentItem?.source ?: source
 
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                repository.saveStatus(itemFileName, itemUri)
+                repository.saveStatus(itemFileName, itemUri, itemSource)
             }
 
             if (result) {
@@ -523,19 +515,19 @@ class FullScreenViewActivity : AppCompatActivity() {
     private fun refreshDownloadStates() {
         lifecycleScope.launch {
             try {
-                val downloadedFilenames = withContext(Dispatchers.IO) {
-                    repository.getAllDownloadedFilenames()
+                val downloadedKeys = withContext(Dispatchers.IO) {
+                    repository.getAllDownloadedKeys()
                 }
                 
                 // Update media items if in ViewPager mode
                 mediaItems?.forEach { item ->
-                    item.isDownloaded = downloadedFilenames.contains(item.filename) || 
+                    item.isDownloaded = downloadedKeys.contains("${item.filename}|${item.source}") || 
                                         item.source == StatusSource.SAVED
                 }
                 
                 // Update single item mode
                 if (mediaItems == null && fileName != null) {
-                    isDownloaded = downloadedFilenames.contains(fileName) || 
+                    isDownloaded = downloadedKeys.contains("${fileName}|${source}") || 
                                    source == StatusSource.SAVED
                 }
                 

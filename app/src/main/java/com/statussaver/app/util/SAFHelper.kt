@@ -51,7 +51,22 @@ object SAFHelper {
         val persistedUris = context.contentResolver.persistedUriPermissions
         for (permission in persistedUris) {
             if (permission.uri == storedUri && permission.isReadPermission) {
-                return true
+                return try {
+                    val documentFile = DocumentFile.fromTreeUri(context, storedUri)
+                    if (documentFile == null || !documentFile.exists() || !documentFile.canRead()) {
+                        return false
+                    }
+                    val childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                        storedUri,
+                        android.provider.DocumentsContract.getTreeDocumentId(storedUri)
+                    )
+                    context.contentResolver.query(childrenUri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)?.use {
+                        it.moveToFirst()
+                    }
+                    true
+                } catch (e: Exception) {
+                    false
+                }
             }
         }
         return false

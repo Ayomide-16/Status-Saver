@@ -14,8 +14,17 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
     private val repository = StatusRepository(application)
     
     // ========== Loading State ==========
-    private val _isLoading = MutableLiveData(false)
-    val isLoading: LiveData<Boolean> = _isLoading
+    private val _isLoading = mutableMapOf<String, MutableLiveData<Boolean>>()
+    
+    fun isLoading(source: StatusSource, fileType: FileType): LiveData<Boolean> {
+        val key = "${source.name}-${fileType.name}"
+        return _isLoading.getOrPut(key) { MutableLiveData(false) }
+    }
+    
+    private fun setLoading(source: StatusSource, fileType: FileType, loading: Boolean) {
+        val key = "${source.name}-${fileType.name}"
+        _isLoading.getOrPut(key) { MutableLiveData(false) }.value = loading
+    }
     
     // ========== Downloaded Filenames ==========
     private val _downloadedFilenames = MutableLiveData<Set<String>>(emptySet())
@@ -45,7 +54,7 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
     
     fun loadDownloadedFilenames() {
         viewModelScope.launch {
-            _downloadedFilenames.value = repository.getAllDownloadedFilenames()
+            _downloadedFilenames.value = repository.getAllDownloadedKeys()
         }
     }
     
@@ -71,7 +80,8 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
     
     fun refreshLiveStatuses() {
         viewModelScope.launch {
-            _isLoading.value = true
+            setLoading(StatusSource.LIVE, FileType.IMAGE, true)
+            setLoading(StatusSource.LIVE, FileType.VIDEO, true)
             try {
                 val allStatuses = repository.getLiveStatuses()
                 _liveImages.value = allStatuses.filter { it.fileType == FileType.IMAGE }
@@ -79,7 +89,8 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 _message.value = "Error refreshing: ${e.message}"
             } finally {
-                _isLoading.value = false
+                setLoading(StatusSource.LIVE, FileType.IMAGE, false)
+                setLoading(StatusSource.LIVE, FileType.VIDEO, false)
             }
         }
     }
@@ -103,7 +114,7 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
             StatusSource.LIVE -> refreshLiveStatuses()
             else -> {
                 // Room LiveData auto-updates
-                _isLoading.value = false
+                setLoading(source, fileType, false)
             }
         }
         loadDownloadedFilenames()
@@ -113,7 +124,8 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
     
     fun saveStatus(filename: String, uri: String, source: StatusSource) {
         viewModelScope.launch {
-            _isLoading.value = true
+            setLoading(source, FileType.IMAGE, true)
+            setLoading(source, FileType.VIDEO, true)
             try {
                 val success = if (source == StatusSource.CACHED) {
                     // For cached files, use direct query instead of LiveData.value
@@ -122,10 +134,10 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
                         repository.saveCachedStatus(cachedStatus)
                     } else {
                         // Fallback: try to save using the URI directly
-                        repository.saveStatus(filename, uri)
+                        repository.saveStatus(filename, uri, source)
                     }
                 } else {
-                    repository.saveStatus(filename, uri)
+                    repository.saveStatus(filename, uri, source)
                 }
                 
                 if (success) {
@@ -137,7 +149,8 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 _message.value = "Error: ${e.message}"
             } finally {
-                _isLoading.value = false
+                setLoading(source, FileType.IMAGE, false)
+                setLoading(source, FileType.VIDEO, false)
             }
         }
     }
@@ -153,8 +166,8 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
     
     // ========== Check Download State ==========
     
-    fun isDownloaded(filename: String): Boolean {
-        return _downloadedFilenames.value?.contains(filename) ?: false
+    fun isDownloaded(filename: String, source: StatusSource): Boolean {
+        return _downloadedFilenames.value?.contains("$filename|$source") ?: false
     }
     
     // ========== Clear Message ==========

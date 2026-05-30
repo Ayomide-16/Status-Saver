@@ -1,47 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Main App Green - Unified Color -->
-    <color name="app_green">#00A884</color>
-    <color name="app_green_dark">#008069</color>
-    <color name="app_green_light">#25D366</color>
+    <!-- Brand Colors -->
+    <color name="app_accent">#00A86B</color>
+    <color name="destructive">#FF3B30</color>
     
-    <!-- WhatsApp Brand Colors (for reference) -->
-    <color name="whatsapp_green">#00A884</color>
-    <color name="whatsapp_teal">#008069</color>
+    <!-- Legacy Color Mappings to prevent build failures -->
+    <color name="app_green">@color/app_accent</color>
+    <color name="whatsapp_green">@color/app_accent</color>
+    <color name="success_green">@color/app_accent</color>
+    <color name="ic_launcher_background">#FFFFFF</color>
     
-    <!-- Light Theme (WhatsApp Green) -->
-    <color name="green_primary">#008069</color>
-    <color name="green_primary_variant">#006B5A</color>
-    <color name="green_secondary">#00A884</color>
-    <color name="green_background">#FFFFFF</color>
-    <color name="green_surface">#FFFFFF</color>
-    <color name="green_surface_variant">#F7F8FA</color>
-    <color name="green_on_primary">#FFFFFF</color>
-    <color name="green_on_secondary">#FFFFFF</color>
-    <color name="green_on_background">#1A1A1A</color>
-    <color name="green_on_surface">#1A1A1A</color>
-    <color name="green_status_bar">#006B5A</color>
-    <color name="green_card_background">#F5F5F5</color>
+    <!-- Light Theme -->
+    <color name="light_background">#FFFFFF</color>
+    <color name="light_surface">#F5F5F5</color>
+    <color name="light_text_primary">#1A1A1A</color>
+    <color name="light_text_secondary">#757575</color>
+    <color name="light_divider">#E0E0E0</color>
     
     <!-- Dark Theme -->
-    <color name="dark_primary">#1F2C34</color>
-    <color name="dark_primary_variant">#0D1418</color>
-    <color name="dark_secondary">#00A884</color>
-    <color name="dark_background">#0B141A</color>
-    <color name="dark_surface">#1F2C34</color>
-    <color name="dark_surface_variant">#233138</color>
-    <color name="dark_on_primary">#FFFFFF</color>
-    <color name="dark_on_secondary">#000000</color>
-    <color name="dark_on_background">#E9EDEF</color>
-    <color name="dark_on_surface">#E9EDEF</color>
-    <color name="dark_status_bar">#0D1418</color>
-    <color name="dark_card_background">#233138</color>
+    <color name="dark_background">#0F0F0F</color>
+    <color name="dark_surface">#1A1A1A</color>
+    <color name="dark_text_primary">#F0F0F0</color>
+    <color name="dark_text_secondary">#757575</color>
+    <color name="dark_divider">#2A2A2A</color>
     
-    <!-- Common Colors -->
-    <color name="ic_launcher_background">#008069</color>
-    <color name="divider_light">#E0E0E0</color>
-    <color name="divider_dark">#2A3942</color>
-    <color name="success_green">#00A884</color>
-    <color name="error_red">#F44336</color>
-    <color name="text_secondary">#8696A0</color>
+    <!-- Transparent/Overlays -->
+    <color name="overlay_dark">#80000000</color>
+    <color name="transparent">#00000000</color>
 </resources>

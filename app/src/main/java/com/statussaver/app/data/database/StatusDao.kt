@@ -11,13 +11,19 @@ interface StatusDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertStatus(status: StatusEntity): Long
     
-    @Query("SELECT * FROM statuses WHERE source = :source ORDER BY savedAt DESC")
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(statuses: List<StatusEntity>): List<Long>
+    
+    @Query("SELECT filename FROM statuses WHERE source = :source AND filename IN (:filenames)")
+    suspend fun getExistingFilenames(filenames: List<String>, source: StatusSource): List<String>
+    
+    @Query("SELECT * FROM statuses WHERE source = :source ORDER BY savedAt DESC, id DESC")
     fun getStatusesBySource(source: StatusSource): LiveData<List<StatusEntity>>
     
-    @Query("SELECT * FROM statuses WHERE source = :source ORDER BY savedAt DESC")
+    @Query("SELECT * FROM statuses WHERE source = :source ORDER BY savedAt DESC, id DESC")
     suspend fun getStatusesBySourceSync(source: StatusSource): List<StatusEntity>
     
-    @Query("SELECT DISTINCT * FROM statuses WHERE source = :source AND fileType = :fileType ORDER BY savedAt DESC")
+    @Query("SELECT DISTINCT * FROM statuses WHERE source = :source AND fileType = :fileType ORDER BY savedAt DESC, id DESC")
     fun getStatusesBySourceAndType(source: StatusSource, fileType: FileType): LiveData<List<StatusEntity>>
     
     @Query("SELECT * FROM statuses WHERE savedAt < :timestamp AND source = 'CACHED'")
@@ -53,18 +59,18 @@ interface StatusDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun markAsDownloaded(downloaded: DownloadedStatus)
     
-    @Query("SELECT * FROM downloaded_status WHERE filename = :filename")
-    suspend fun getDownloadedByFilename(filename: String): DownloadedStatus?
+    @Query("SELECT * FROM downloaded_status WHERE filename = :filename AND source = :source")
+    suspend fun getDownloadedByFilenameAndSource(filename: String, source: StatusSource): DownloadedStatus?
     
-    @Query("SELECT EXISTS(SELECT 1 FROM downloaded_status WHERE filename = :filename)")
-    suspend fun isDownloaded(filename: String): Boolean
+    @Query("SELECT EXISTS(SELECT 1 FROM downloaded_status WHERE filename = :filename AND source = :source)")
+    suspend fun isDownloaded(filename: String, source: StatusSource): Boolean
     
     @Query("SELECT * FROM downloaded_status ORDER BY downloadedAt DESC")
     fun getAllDownloaded(): LiveData<List<DownloadedStatus>>
     
-    @Query("SELECT filename FROM downloaded_status")
-    suspend fun getAllDownloadedFilenames(): List<String>
+    @Query("SELECT filename || '|' || source FROM downloaded_status")
+    suspend fun getAllDownloadedKeys(): List<String>
     
-    @Query("DELETE FROM downloaded_status WHERE filename = :filename")
-    suspend fun removeDownloadedStatus(filename: String)
+    @Query("DELETE FROM downloaded_status WHERE filename = :filename AND source = :source")
+    suspend fun removeDownloadedStatus(filename: String, source: StatusSource)
 }

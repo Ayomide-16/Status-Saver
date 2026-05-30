@@ -17,7 +17,14 @@ enum class StatusSource {
 /**
  * Entity for cached/saved status files
  */
-@Entity(tableName = "statuses")
+@Entity(
+    tableName = "statuses",
+    indices = [
+        androidx.room.Index(value = ["source", "savedAt"]),
+        androidx.room.Index(value = ["source", "fileType", "savedAt"]),
+        androidx.room.Index(value = ["filename", "source"], unique = true)
+    ]
+)
 data class StatusEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -35,10 +42,13 @@ data class StatusEntity(
  * Entity for tracking downloaded status files
  * This persists which files have been saved by the user
  */
-@Entity(tableName = "downloaded_status")
+@Entity(
+    tableName = "downloaded_status",
+    primaryKeys = ["filename", "source"]
+)
 data class DownloadedStatus(
-    @PrimaryKey
     val filename: String,
+    val source: StatusSource,
     val originalPath: String,
     val savedPath: String,
     val downloadedAt: Long = System.currentTimeMillis()

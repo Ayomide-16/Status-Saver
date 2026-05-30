@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -41,6 +42,21 @@ class FullScreenMediaAdapter(
     private var currentVideoView: VideoView? = null
     private var currentMediaPlayer: MediaPlayer? = null
     
+    private val activeHolders = mutableMapOf<Int, MediaViewHolder>()
+    private var activePosition: Int = -1
+
+    fun setActivePosition(position: Int) {
+        activePosition = position
+        // Pause all other videos
+        activeHolders.forEach { (pos, holder) ->
+            if (pos != position) {
+                holder.pauseVideo()
+            } else {
+                holder.playVideo()
+            }
+        }
+    }
+    
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_fullscreen_media, parent, false)
@@ -58,13 +74,14 @@ class FullScreenMediaAdapter(
     }
 
     fun releaseCurrentVideo() {
-        currentVideoView?.stopPlayback()
+        activeHolders[activePosition]?.cleanup()
         currentVideoView = null
         currentMediaPlayer = null
     }
 
     override fun onViewRecycled(holder: MediaViewHolder) {
         super.onViewRecycled(holder)
+        activeHolders.remove(holder.adapterPosition)
         holder.cleanup()
     }
 
@@ -84,6 +101,10 @@ class FullScreenMediaAdapter(
         private val seekBar: SeekBar = itemView.findViewById(R.id.videoSeekBar)
         private val txtCurrentTime: TextView = itemView.findViewById(R.id.txtCurrentTime)
         private val txtDuration: TextView = itemView.findViewById(R.id.txtDuration)
+        
+        // Error Overlay
+        private val errorOverlay: View = itemView.findViewById(R.id.errorOverlay)
+        private val btnRetry: Button = itemView.findViewById(R.id.btnRetry)
 
         private var gestureHandler: VideoGestureHandler? = null
         private var mediaPlayer: MediaPlayer? = null
@@ -116,6 +137,7 @@ class FullScreenMediaAdapter(
 
         @SuppressLint("ClickableViewAccessibility")
         fun bind(item: MediaItem) {
+            activeHolders[adapterPosition] = this
             if (item.fileType == FileType.VIDEO) {
                 setupVideo(item)
             } else {
@@ -148,6 +170,7 @@ class FullScreenMediaAdapter(
             videoView.visibility = View.VISIBLE
             touchOverlay.visibility = View.VISIBLE
             customControls.visibility = View.VISIBLE
+            errorOverlay.visibility = View.GONE
             resetIndicators()
 
             val uri = when (item.source) {
@@ -166,14 +189,34 @@ class FullScreenMediaAdapter(
             videoView.setMediaController(null)
 
             videoView.setOnPreparedListener { mp ->
+                errorOverlay.visibility = View.GONE
                 mediaPlayer = mp
                 currentMediaPlayer = mp
                 mp.isLooping = false
-                videoView.start()
+                
+                if (adapterPosition == activePosition) {
+                    videoView.start()
+                }
                 
                 setupCustomControls()
                 updatePlayPauseButton()
+                
+                // Initialize duration
+                txtDuration.text = formatTime(mp.duration)
+                
                 startSeekBarUpdates()
+            }
+
+            videoView.setOnErrorListener { _, _, _ ->
+                errorOverlay.visibility = View.VISIBLE
+                customControls.visibility = View.GONE
+                true
+            }
+
+            btnRetry.setOnClickListener {
+                errorOverlay.visibility = View.GONE
+                customControls.visibility = View.VISIBLE
+                videoView.setVideoURI(uri)
             }
 
             currentVideoView = videoView
@@ -330,6 +373,20 @@ class FullScreenMediaAdapter(
             btnPlayPause.setImageResource(iconRes)
         }
         
+        fun playVideo() {
+            if (mediaPlayer != null && !videoView.isPlaying) {
+                videoView.start()
+                updatePlayPauseButton()
+            }
+        }
+
+        fun pauseVideo() {
+            if (videoView.isPlaying) {
+                videoView.pause()
+                updatePlayPauseButton()
+            }
+        }
+
         private fun togglePlayPause() {
             if (videoView.isPlaying) {
                 videoView.pause()
@@ -397,7 +454,7 @@ class FullScreenMediaAdapter(
         
         private fun startFastForward() {
             setPlaybackSpeed(2.0f)
-            speedIndicator.text = "2x ▶▶"
+            speedIndicator.text = "2x \u25B6\u25B6"
             speedIndicator.visibility = View.VISIBLE
             speedIndicator.alpha = 1f
         }
@@ -406,7 +463,7 @@ class FullScreenMediaAdapter(
             isReverseMode = true
             savedPosition = videoView.currentPosition
             
-            speedIndicator.text = "◀◀ 2x"
+            speedIndicator.text = "\u25C0\u25C0 2x"
             speedIndicator.visibility = View.VISIBLE
             speedIndicator.alpha = 1f
             

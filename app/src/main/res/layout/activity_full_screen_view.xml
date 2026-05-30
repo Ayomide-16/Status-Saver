@@ -29,43 +29,71 @@
         android:layout_gravity="center"
         android:visibility="gone" />
 
-    <!-- Download FAB -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fabDownload"
-        android:layout_width="wrap_content"
+    <!-- Top Action Bar -->
+    <FrameLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_margin="16dp"
-        android:src="@drawable/ic_download"
-        android:contentDescription="Download"
-        app:backgroundTint="@color/whatsapp_green"
-        app:tint="@android:color/white" />
+        android:layout_gravity="top"
+        android:padding="16dp">
 
-    <!-- Share FAB -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fabShare"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="16dp"
-        android:src="@drawable/ic_share"
-        android:contentDescription="Share"
-        app:backgroundTint="@color/whatsapp_green"
-        app:tint="@android:color/white" />
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="start|center_vertical"
+            android:src="@drawable/ic_close"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close"
+            app:tint="@android:color/white" />
 
-    <!-- Page indicator -->
-    <TextView
-        android:id="@+id/pageIndicator"
-        android:layout_width="wrap_content"
+        <!-- Page indicator -->
+        <TextView
+            android:id="@+id/pageIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:padding="8dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="@drawable/pill_background"
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+    <!-- Bottom Action Bar -->
+    <LinearLayout
+        android:id="@+id/bottomActionLayout"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="16dp"
-        android:padding="8dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:background="@drawable/rounded_bg_dark"
-        android:textColor="@android:color/white"
-        android:textSize="14sp"
-        android:visibility="gone" />
+        android:layout_gravity="bottom"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="24dp"
+        android:background="@drawable/gradient_bottom">
+        
+        <ImageView
+            android:id="@+id/fabDownload"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="32dp"
+            android:padding="12dp"
+            android:src="@drawable/ic_download"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Download"
+            app:tint="@android:color/white" />
+
+        <ImageView
+            android:id="@+id/fabShare"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="32dp"
+            android:padding="12dp"
+            android:src="@drawable/ic_share"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Share"
+            app:tint="@android:color/white" />
+    </LinearLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

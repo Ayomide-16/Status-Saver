@@ -25,7 +25,11 @@ class BootReceiver : BroadcastReceiver() {
             // Only start service if we have valid SAF permission
             if (SAFHelper.hasValidPermission(context)) {
                 Log.d(TAG, "Starting monitoring service after boot")
-                StatusMonitorService.start(context)
+                try {
+                    StatusMonitorService.start(context)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to start service after boot: ${e.message}")
+                }
             } else {
                 Log.d(TAG, "No valid SAF permission, service not started")
             }

@@ -21,23 +21,16 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="@string/app_name"
-            app:titleTextColor="?attr/colorOnPrimary"
+            app:titleTextColor="?attr/colorOnBackground"
             app:titleTextAppearance="@style/ToolbarTitle"
-            android:background="?attr/colorPrimary">
-
-            <!-- Theme Toggle Button in Toolbar -->
-            <ImageButton
-                android:id="@+id/btnThemeToggle"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_gravity="end"
-                android:layout_marginEnd="8dp"
-                android:src="@drawable/ic_theme"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Toggle theme"
-                app:tint="?attr/colorOnPrimary" />
-
+            android:background="?attr/colorSurface">
         </com.google.android.material.appbar.MaterialToolbar>
+
+        <!-- 1dp divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorSurfaceVariant" />
 
         <!-- Selection Mode Toolbar (overlays normal toolbar) -->
         <com.google.android.material.appbar.MaterialToolbar
@@ -193,11 +186,13 @@
     </LinearLayout>
 
     <!-- Loading Indicator -->
-    <ProgressBar
+    <com.google.android.material.progressindicator.CircularProgressIndicator
         android:id="@+id/progressBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:indeterminate="true"
+        app:indicatorColor="?attr/colorPrimary"
         android:visibility="gone" />
 
     <!-- Bottom Navigation with proper height -->
@@ -213,6 +208,14 @@
         app:itemTextColor="@color/bottom_nav_colors"
         app:itemPaddingTop="8dp"
         app:itemPaddingBottom="8dp"
-        android:elevation="12dp" />
+        android:elevation="0dp" />
+
+    <!-- Top separator for bottom nav -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="64dp"
+        android:background="?attr/colorSurfaceVariant" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

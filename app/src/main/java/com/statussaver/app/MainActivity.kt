@@ -186,22 +186,7 @@ class MainActivity : AppCompatActivity() {
             launchSafPicker()
         }
         
-        // Theme toggle button in toolbar
-        binding.btnThemeToggle.setOnClickListener {
-            toggleTheme()
-        }
-        
-        // Update theme icon based on current theme
-        updateThemeIcon()
-    }
-
-    private fun updateThemeIcon() {
-        val iconRes = if (ThemeManager.isDarkTheme(this)) {
-            R.drawable.ic_light_mode
-        } else {
-            R.drawable.ic_dark_mode
-        }
-        binding.btnThemeToggle.setImageResource(iconRes)
+        // Theme is now managed via Settings or overflow menu
     }
 
     private fun observeViewModel() {
@@ -262,7 +247,7 @@ class MainActivity : AppCompatActivity() {
     private fun launchSafPicker() {
         Toast.makeText(
             this,
-            "Navigate to: Android → media → com.whatsapp → WhatsApp → Media → .Statuses",
+            "Navigate to: Android \u2192 media \u2192 com.whatsapp \u2192 WhatsApp \u2192 Media \u2192 .Statuses",
             Toast.LENGTH_LONG
         ).show()
         safLauncher.launch(null)
@@ -327,6 +312,10 @@ class MainActivity : AppCompatActivity() {
             }
             R.id.action_cache_duration -> {
                 showCacheDurationDialog()
+                true
+            }
+            R.id.action_theme_toggle -> {
+                toggleTheme()
                 true
             }
             R.id.action_folder_paths -> {

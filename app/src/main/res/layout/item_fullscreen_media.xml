@@ -104,7 +104,7 @@
         android:textSize="18sp"
         android:textStyle="bold"
         android:visibility="gone"
-        android:text="2x ▶▶" />
+        android:text="2x \u25B6\u25B6" />
 
     <!-- Custom Video Controls -->
     <LinearLayout
@@ -197,6 +197,41 @@
 
         </LinearLayout>
 
+    </LinearLayout>
+
+    <!-- Error Overlay -->
+    <LinearLayout
+        android:id="@+id/errorOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#80000000"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_error"
+            app:tint="@android:color/white"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/errorText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Failed to play video"
+            android:textColor="@android:color/white"
+            android:textSize="16sp"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnRetry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Retry"
+            android:backgroundTint="@color/app_green"
+            android:textColor="@android:color/white" />
     </LinearLayout>
 
 </FrameLayout>

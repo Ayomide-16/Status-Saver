@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base Theme (Dark mode alias) -->
+    <style name="Theme.StatusSaver" parent="Theme.StatusSaver.Dark">
+    </style>
+</resources>
