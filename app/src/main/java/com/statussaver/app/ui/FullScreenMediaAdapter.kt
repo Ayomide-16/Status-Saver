@@ -86,17 +86,26 @@ class FullScreenMediaAdapter(
         private val txtDuration: TextView = itemView.findViewById(R.id.txtDuration)
 
         private var gestureHandler: VideoGestureHandler? = null
-        private val mainHandler = Handler(Looper.getMainLooper())
         private var mediaPlayer: MediaPlayer? = null
         private var isReverseMode = false
-        private var reverseHandler: Handler? = null
         private var reverseRunnable: Runnable? = null
         private var controlsVisible = true
         private var savedPosition = 0
+        private var seekBarUpdateRunnable: Runnable? = null
 
-        // Separate handlers for animations to avoid conflicts
-        private val leftAnimHandler = Handler(Looper.getMainLooper())
-        private val rightAnimHandler = Handler(Looper.getMainLooper())
+        private val hideControlsRunnable = Runnable {
+            if (controlsVisible) {
+                toggleControls(false)
+            }
+        }
+        
+        private val hideLeftAnimRunnable = Runnable {
+            leftSeekIndicator.visibility = View.GONE
+        }
+        
+        private val hideRightAnimRunnable = Runnable {
+            rightSeekIndicator.visibility = View.GONE
+        }
         
         // Video zoom state
         private var videoScaleFactor = 1.0f
@@ -180,10 +189,8 @@ class FullScreenMediaAdapter(
 
                     override fun onLongPressStart(isRightSide: Boolean) {
                         if (isRightSide) {
-                            // 2x forward speed
                             startFastForward()
                         } else {
-                            // Reverse playback
                             startReversePlayback()
                         }
                     }
@@ -193,7 +200,6 @@ class FullScreenMediaAdapter(
                     }
 
                     override fun onDoubleTapCenter() {
-                        // If zoomed in, double-tap center = zoom out (not pause)
                         if (isZoomedIn) {
                             resetZoom()
                         } else {
@@ -207,12 +213,10 @@ class FullScreenMediaAdapter(
                 }
             )
             
-            // Setup pinch-to-zoom for video with improved responsiveness
             scaleGestureDetector = ScaleGestureDetector(
                 itemView.context,
                 object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                     override fun onScale(detector: ScaleGestureDetector): Boolean {
-                        // 1.5x multiplier for faster, more responsive zoom
                         val scaleDelta = (detector.scaleFactor - 1f) * 1.5f + 1f
                         videoScaleFactor *= scaleDelta
                         videoScaleFactor = videoScaleFactor.coerceIn(minScale, maxScale)
@@ -220,7 +224,6 @@ class FullScreenMediaAdapter(
                         videoView.scaleX = videoScaleFactor
                         videoView.scaleY = videoScaleFactor
                         
-                        // Update zoom state and notify
                         val wasZoomed = isZoomedIn
                         isZoomedIn = videoScaleFactor > 1.05f
                         if (wasZoomed != isZoomedIn) {
@@ -230,7 +233,6 @@ class FullScreenMediaAdapter(
                     }
                     
                     override fun onScaleEnd(detector: ScaleGestureDetector) {
-                        // Snap back to 1.0 if close to minimum
                         if (videoScaleFactor < 1.15f) {
                             videoView.animate()
                                 .scaleX(1.0f)
@@ -248,9 +250,7 @@ class FullScreenMediaAdapter(
             )
 
             touchOverlay.setOnTouchListener { _, event ->
-                // Handle pinch zoom first
                 scaleGestureDetector?.onTouchEvent(event)
-                // Then handle other gestures
                 gestureHandler?.onTouchEvent(event) ?: false
             }
         }
@@ -258,10 +258,10 @@ class FullScreenMediaAdapter(
         private fun performSeek(forward: Boolean) {
             try {
                 val duration = videoView.duration
-                if (duration <= 0) return  // Video not ready
+                if (duration <= 0) return
                 
                 val currentPos = videoView.currentPosition
-                val seekAmount = 3000 // 3 seconds
+                val seekAmount = 3000
                 
                 val newPos = if (forward) {
                     minOf(currentPos + seekAmount, duration)
@@ -269,7 +269,6 @@ class FullScreenMediaAdapter(
                     maxOf(currentPos - seekAmount, 0)
                 }
                 
-                // Use MediaPlayer's seekTo with SEEK_CLOSEST for better precision on API 26+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && mediaPlayer != null) {
                     mediaPlayer?.seekTo(newPos.toLong(), MediaPlayer.SEEK_CLOSEST)
                 } else {
@@ -278,7 +277,6 @@ class FullScreenMediaAdapter(
                 
                 showSeekAnimation(forward)
             } catch (e: Exception) {
-                // Fallback to basic seek if MediaPlayer fails
                 try {
                     videoView.seekTo(if (forward) videoView.currentPosition + 3000 else maxOf(videoView.currentPosition - 3000, 0))
                     showSeekAnimation(forward)
@@ -291,27 +289,13 @@ class FullScreenMediaAdapter(
             seekBar.max = duration
             txtDuration.text = formatTime(duration)
             
-            // Rewind button - 3 seconds
-            btnRewind.setOnClickListener {
-                performSeek(false)
-            }
+            btnRewind.setOnClickListener { performSeek(false) }
+            btnForward.setOnClickListener { performSeek(true) }
             
-            // Forward button - 3 seconds
-            btnForward.setOnClickListener {
-                performSeek(true)
-            }
-            
-            // Play/Pause button
             btnPlayPause.setOnClickListener {
-                if (videoView.isPlaying) {
-                    videoView.pause()
-                } else {
-                    videoView.start()
-                }
-                updatePlayPauseButton()
+                togglePlayPause()
             }
             
-            // SeekBar
             seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (fromUser) {
@@ -325,20 +309,20 @@ class FullScreenMediaAdapter(
         }
         
         private fun startSeekBarUpdates() {
-            val updateRunnable = object : Runnable {
+            seekBarUpdateRunnable?.let { itemView.removeCallbacks(it) }
+            
+            seekBarUpdateRunnable = object : Runnable {
                 override fun run() {
                     try {
                         if (videoView.isPlaying) {
                             seekBar.progress = videoView.currentPosition
                             txtCurrentTime.text = formatTime(videoView.currentPosition)
                         }
-                        mainHandler.postDelayed(this, 200)
-                    } catch (e: Exception) {
-                        // Video view might be released
-                    }
+                        itemView.postDelayed(this, 200)
+                    } catch (e: Exception) {}
                 }
             }
-            mainHandler.post(updateRunnable)
+            itemView.post(seekBarUpdateRunnable!!)
         }
         
         private fun updatePlayPauseButton() {
@@ -355,12 +339,9 @@ class FullScreenMediaAdapter(
             updatePlayPauseButton()
         }
         
-        private fun toggleControls() {
-            controlsVisible = !controlsVisible
+        private fun toggleControls(visible: Boolean? = null) {
+            controlsVisible = visible ?: !controlsVisible
             val targetAlpha = if (controlsVisible) 1f else 0f
-            
-            // Timeline stays at fixed bottom position - no translation needed
-            // FABs will auto-hide independently via Activity callback
             
             customControls.animate()
                 .alpha(targetAlpha)
@@ -374,13 +355,14 @@ class FullScreenMediaAdapter(
                 }
                 .start()
             
-            // Notify Activity to sync FAB visibility and reset auto-hide timer
             onControlsVisibilityChanged(controlsVisible)
+            
+            itemView.removeCallbacks(hideControlsRunnable)
+            if (controlsVisible) {
+                itemView.postDelayed(hideControlsRunnable, 3000)
+            }
         }
         
-        /**
-         * Zoom out to 100% with animation
-         */
         private fun resetZoom() {
             if (isZoomedIn) {
                 videoView.animate()
@@ -409,9 +391,7 @@ class FullScreenMediaAdapter(
                         params.speed = speed
                         mp.playbackParams = params
                     }
-                } catch (e: Exception) {
-                    // Some devices may not support playback speed
-                }
+                } catch (e: Exception) {}
             }
         }
         
@@ -426,25 +406,20 @@ class FullScreenMediaAdapter(
             isReverseMode = true
             savedPosition = videoView.currentPosition
             
-            // Show indicator
             speedIndicator.text = "◀◀ 2x"
             speedIndicator.visibility = View.VISIBLE
             speedIndicator.alpha = 1f
             
-            // Keep video playing but rapidly seek backward
-            reverseHandler = Handler(Looper.getMainLooper())
             reverseRunnable = object : Runnable {
                 override fun run() {
                     if (isReverseMode) {
                         try {
                             val current = videoView.currentPosition
                             if (current > 100) {
-                                // Seek backward while still playing for smoother effect
                                 val newPos = maxOf(current - 150, 0)
                                 videoView.seekTo(newPos)
-                                reverseHandler?.postDelayed(this, 50)
+                                itemView.postDelayed(this, 50)
                             } else {
-                                // Reached beginning
                                 isReverseMode = false
                             }
                         } catch (e: Exception) {
@@ -453,25 +428,20 @@ class FullScreenMediaAdapter(
                     }
                 }
             }
-            reverseHandler?.post(reverseRunnable!!)
+            itemView.post(reverseRunnable!!)
         }
         
         private fun stopSpeedControl() {
-            // Stop reverse mode
             isReverseMode = false
-            reverseRunnable?.let { reverseHandler?.removeCallbacks(it) }
-            reverseHandler = null
+            reverseRunnable?.let { itemView.removeCallbacks(it) }
             reverseRunnable = null
             
-            // Reset speed to normal
             setPlaybackSpeed(1.0f)
             
-            // Make sure video is playing
             if (!videoView.isPlaying) {
                 videoView.start()
             }
             
-            // Hide speed indicator with animation
             speedIndicator.animate()
                 .alpha(0f)
                 .setDuration(200)
@@ -483,27 +453,22 @@ class FullScreenMediaAdapter(
         }
 
         private fun showSeekAnimation(forward: Boolean) {
-            // Clear any pending animations
-            leftAnimHandler.removeCallbacksAndMessages(null)
-            rightAnimHandler.removeCallbacksAndMessages(null)
+            val indicator = if (forward) rightSeekIndicator else leftSeekIndicator
+            val hideRunnable = if (forward) hideRightAnimRunnable else hideLeftAnimRunnable
             
-            // Hide both indicators first (in case previous animation was running)
+            itemView.removeCallbacks(hideLeftAnimRunnable)
+            itemView.removeCallbacks(hideRightAnimRunnable)
+            
             leftSeekIndicator.clearAnimation()
             rightSeekIndicator.clearAnimation()
             leftSeekIndicator.visibility = View.GONE
             rightSeekIndicator.visibility = View.GONE
             
-            // Select the correct indicator based on direction
-            val indicator = if (forward) rightSeekIndicator else leftSeekIndicator
-            val animHandler = if (forward) rightAnimHandler else leftAnimHandler
-            
-            // Reset indicator state
             indicator.alpha = 0f
             indicator.scaleX = 0.6f
             indicator.scaleY = 0.6f
             indicator.visibility = View.VISIBLE
             
-            // Animate in with scale and fade
             indicator.animate()
                 .alpha(1f)
                 .scaleX(1.1f)
@@ -511,32 +476,20 @@ class FullScreenMediaAdapter(
                 .setDuration(150)
                 .setInterpolator(OvershootInterpolator(1.5f))
                 .withEndAction {
-                    // Slight scale back
                     indicator.animate()
                         .scaleX(1f)
                         .scaleY(1f)
                         .setDuration(100)
                         .start()
                     
-                    // Schedule fade out
-                    animHandler.postDelayed({
-                        indicator.animate()
-                            .alpha(0f)
-                            .scaleX(0.8f)
-                            .scaleY(0.8f)
-                            .setDuration(250)
-                            .withEndAction { 
-                                indicator.visibility = View.GONE 
-                            }
-                            .start()
-                    }, 350)
+                    itemView.postDelayed(hideRunnable, 350)
                 }
                 .start()
         }
 
         private fun resetIndicators() {
-            leftAnimHandler.removeCallbacksAndMessages(null)
-            rightAnimHandler.removeCallbacksAndMessages(null)
+            itemView.removeCallbacks(hideLeftAnimRunnable)
+            itemView.removeCallbacks(hideRightAnimRunnable)
             leftSeekIndicator.visibility = View.GONE
             rightSeekIndicator.visibility = View.GONE
             speedIndicator.visibility = View.GONE
@@ -547,9 +500,11 @@ class FullScreenMediaAdapter(
         fun cleanup() {
             gestureHandler?.cleanup()
             gestureHandler = null
-            mainHandler.removeCallbacksAndMessages(null)
-            leftAnimHandler.removeCallbacksAndMessages(null)
-            rightAnimHandler.removeCallbacksAndMessages(null)
+            seekBarUpdateRunnable?.let { itemView.removeCallbacks(it) }
+            seekBarUpdateRunnable = null
+            itemView.removeCallbacks(hideControlsRunnable)
+            itemView.removeCallbacks(hideLeftAnimRunnable)
+            itemView.removeCallbacks(hideRightAnimRunnable)
             stopSpeedControl()
             videoView.stopPlayback()
             mediaPlayer = null

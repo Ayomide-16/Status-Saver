@@ -14,6 +14,7 @@ import android.widget.Toast
 import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
 import coil.load
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -21,7 +22,7 @@ import com.statussaver.app.R
 import com.statussaver.app.data.database.FileType
 import com.statussaver.app.data.database.StatusSource
 import com.statussaver.app.data.repository.StatusRepository
-import kotlinx.coroutines.CoroutineScope
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,6 +43,14 @@ class FullScreenViewActivity : AppCompatActivity() {
         const val EXTRA_CURRENT_POSITION = "current_position"
         
         private const val FAB_AUTO_HIDE_DELAY_MS = 2000L
+        
+        // P0-07: Static holder to avoid TransactionTooLargeException from Binder limit
+        @Volatile
+        private var pendingMediaItems: ArrayList<MediaItem>? = null
+        
+        fun setPendingItems(items: ArrayList<MediaItem>) {
+            pendingMediaItems = items
+        }
     }
 
     // Single item mode properties
@@ -51,6 +60,7 @@ class FullScreenViewActivity : AppCompatActivity() {
     private var fileType: FileType = FileType.IMAGE
     private var source: StatusSource = StatusSource.LIVE
     private var isDownloaded: Boolean = false
+    private var mediaController: MediaController? = null
 
     // ViewPager mode properties
     private var mediaItems: ArrayList<MediaItem>? = null
@@ -86,9 +96,12 @@ class FullScreenViewActivity : AppCompatActivity() {
         fabShare = findViewById(R.id.fabShare)
         pageIndicator = findViewById(R.id.pageIndicator)
 
-        // Check for new multi-item mode
-        @Suppress("DEPRECATION")
-        mediaItems = intent.getParcelableArrayListExtra(EXTRA_MEDIA_ITEMS)
+        // P0-07: Read from static holder first to avoid Binder limit
+        mediaItems = pendingMediaItems ?: run {
+            @Suppress("DEPRECATION")
+            intent.getParcelableArrayListExtra(EXTRA_MEDIA_ITEMS)
+        }
+        pendingMediaItems = null // Clear static reference to prevent leak
         currentPosition = intent.getIntExtra(EXTRA_CURRENT_POSITION, 0)
 
         if (mediaItems != null && mediaItems!!.isNotEmpty()) {
@@ -228,8 +241,13 @@ class FullScreenViewActivity : AppCompatActivity() {
         filePath = intent.getStringExtra(EXTRA_FILE_PATH)
         fileUri = intent.getStringExtra(EXTRA_FILE_URI)
         fileName = intent.getStringExtra(EXTRA_FILE_NAME)
-        fileType = FileType.valueOf(intent.getStringExtra(EXTRA_FILE_TYPE) ?: FileType.IMAGE.name)
-        source = StatusSource.valueOf(intent.getStringExtra(EXTRA_SOURCE) ?: StatusSource.LIVE.name)
+        // P0-05: Guard against IllegalArgumentException from corrupted extras
+        fileType = try {
+            FileType.valueOf(intent.getStringExtra(EXTRA_FILE_TYPE) ?: FileType.IMAGE.name)
+        } catch (e: IllegalArgumentException) { FileType.IMAGE }
+        source = try {
+            StatusSource.valueOf(intent.getStringExtra(EXTRA_SOURCE) ?: StatusSource.LIVE.name)
+        } catch (e: IllegalArgumentException) { StatusSource.LIVE }
         isDownloaded = intent.getBooleanExtra(EXTRA_IS_DOWNLOADED, false)
 
         viewPager.visibility = View.GONE
@@ -278,8 +296,8 @@ class FullScreenViewActivity : AppCompatActivity() {
 
         videoView.setVideoURI(uri)
 
-        val mediaController = MediaController(this)
-        mediaController.setAnchorView(videoView)
+        mediaController = MediaController(this)
+        mediaController?.setAnchorView(videoView)
         videoView.setMediaController(mediaController)
 
         videoView.setOnPreparedListener { mp ->
@@ -297,6 +315,7 @@ class FullScreenViewActivity : AppCompatActivity() {
         fabDownload.setOnClickListener {
             showFabs() // Keep visible when interacting
             if (!getCurrentDownloadState()) {
+                fabDownload.isEnabled = false // P2-07: Prevent double-tap
                 downloadStatus()
             }
         }
@@ -336,7 +355,7 @@ class FullScreenViewActivity : AppCompatActivity() {
         val itemFileName = currentItem?.filename ?: fileName ?: return
         val itemUri = currentItem?.uri ?: fileUri ?: return
 
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 repository.saveStatus(itemFileName, itemUri)
             }
@@ -367,7 +386,7 @@ class FullScreenViewActivity : AppCompatActivity() {
             return
         }
         
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             try {
                 val shareUri = withContext(Dispatchers.IO) {
                     getShareableUri(itemPath, itemUri, itemSource)
@@ -397,9 +416,9 @@ class FullScreenViewActivity : AppCompatActivity() {
      */
     private suspend fun getShareableUri(path: String?, uri: String?, source: StatusSource): Uri? = withContext(Dispatchers.IO) {
         try {
-            // Case 1: Live status - use SAF URI directly (already has permission)
+            // Case 1: Live status - copy to cache and share from there (P3-10: SAF URIs are not shareable)
             if (source == StatusSource.LIVE && !uri.isNullOrEmpty()) {
-                return@withContext Uri.parse(uri)
+                return@withContext copyToCache(Uri.parse(uri))
             }
             
             // Case 2: Path is a regular file path
@@ -502,7 +521,7 @@ class FullScreenViewActivity : AppCompatActivity() {
      * This ensures grid and fullscreen views stay in sync
      */
     private fun refreshDownloadStates() {
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             try {
                 val downloadedFilenames = withContext(Dispatchers.IO) {
                     repository.getAllDownloadedFilenames()
@@ -541,5 +560,8 @@ class FullScreenViewActivity : AppCompatActivity() {
         super.onDestroy()
         hideHandler.removeCallbacksAndMessages(null)
         adapter?.releaseCurrentVideo()
+        mediaController?.hide()
+        mediaController?.setAnchorView(null)
+        mediaController = null
     }
 }

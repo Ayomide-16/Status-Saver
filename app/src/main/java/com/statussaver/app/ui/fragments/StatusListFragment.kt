@@ -45,10 +45,11 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     private var statusSource: StatusSource = StatusSource.LIVE
     private var fileType: FileType = FileType.IMAGE
     
+    private var currentItems: List<StatusAdapter.StatusItem> = emptyList()
+    
     companion object {
         private const val ARG_SOURCE = "source"
         private const val ARG_FILE_TYPE = "file_type"
-        private const val SELECTION_ID = "status-selection"
         
         fun newInstance(source: StatusSource, fileType: FileType): StatusListFragment {
             return StatusListFragment().apply {
@@ -84,6 +85,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         setupSelectionTracker(savedInstanceState)
         setupSwipeRefresh()
         observeData()
+        observeDownloadedState()
     }
     
     override fun onSaveInstanceState(outState: Bundle) {
@@ -94,7 +96,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     override fun onResume() {
         super.onResume()
         (activity as? com.statussaver.app.MainActivity)?.setSelectionCallback(this)
-        refreshDownloadStates()
+        viewModel.loadDownloadedFilenames() // Refresh state
     }
     
     override fun onPause() {
@@ -102,15 +104,14 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         (activity as? com.statussaver.app.MainActivity)?.setSelectionCallback(null)
     }
     
-    private fun refreshDownloadStates() {
-        lifecycleScope.launch {
-            try {
-                val downloadedFilenames = withContext(Dispatchers.IO) {
-                    repository.getAllDownloadedFilenames()
+    private fun observeDownloadedState() {
+        viewModel.downloadedFilenames.observe(viewLifecycleOwner) { filenames ->
+            if (currentItems.isNotEmpty()) {
+                currentItems = currentItems.map { item ->
+                    val isDownloaded = filenames.contains(item.filename) || item.source == StatusSource.SAVED
+                    if (item.isDownloaded != isDownloaded) item.copy(isDownloaded = isDownloaded) else item
                 }
-                adapter.updateDownloadedState(downloadedFilenames)
-            } catch (e: Exception) {
-                // Ignore errors
+                adapter.submitList(currentItems)
             }
         }
     }
@@ -136,8 +137,9 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     }
     
     private fun setupSelectionTracker(savedInstanceState: Bundle?) {
+        val selectionId = "selection-${statusSource.name}-${fileType.name}"
         selectionTracker = SelectionTracker.Builder(
-            SELECTION_ID,
+            selectionId,
             binding.recyclerView,
             StatusItemKeyProvider(adapter),
             StatusItemDetailsLookup(binding.recyclerView),
@@ -179,8 +181,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     }
     
     private fun refreshData() {
-        viewModel.refreshStatuses()
-        binding.swipeRefresh.isRefreshing = false
+        viewModel.refreshData(statusSource, fileType)
     }
     
     // ========== SelectionCallback Implementation ==========
@@ -235,7 +236,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
             }
             Toast.makeText(requireContext(), "$savedCount items saved", Toast.LENGTH_SHORT).show()
             selectionTracker?.clearSelection()
-            refreshDownloadStates()
+            viewModel.loadDownloadedFilenames()
         }
     }
     
@@ -245,8 +246,9 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         
         lifecycleScope.launch {
             try {
+                val ctx = requireContext()
                 val uris = withContext(Dispatchers.IO) {
-                    items.mapNotNull { item -> getShareableUri(item) }
+                    items.mapNotNull { item -> getShareableUri(ctx, item) }
                 }
                 
                 if (uris.isEmpty()) {
@@ -308,7 +310,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     
     // ========== Share Helpers ==========
     
-    private suspend fun getShareableUri(item: StatusAdapter.StatusItem): android.net.Uri? = withContext(Dispatchers.IO) {
+    private suspend fun getShareableUri(context: android.content.Context, item: StatusAdapter.StatusItem): android.net.Uri? = withContext(Dispatchers.IO) {
         try {
             if (item.source == StatusSource.LIVE && item.uri.isNotEmpty()) {
                 return@withContext android.net.Uri.parse(item.uri)
@@ -318,8 +320,8 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                 val file = java.io.File(item.path)
                 if (file.exists() && file.canRead()) {
                     return@withContext androidx.core.content.FileProvider.getUriForFile(
-                        requireContext(),
-                        "${requireContext().packageName}.fileprovider",
+                        context,
+                        "${context.packageName}.fileprovider",
                         file
                     )
                 }
@@ -327,18 +329,18 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
             
             if (item.path.startsWith("content://")) {
                 val contentUri = android.net.Uri.parse(item.path)
-                val actualPath = getFilePathFromContentUri(contentUri)
+                val actualPath = getFilePathFromContentUri(context, contentUri)
                 if (!actualPath.isNullOrEmpty()) {
                     val file = java.io.File(actualPath)
                     if (file.exists() && file.canRead()) {
                         return@withContext androidx.core.content.FileProvider.getUriForFile(
-                            requireContext(),
-                            "${requireContext().packageName}.fileprovider",
+                            context,
+                            "${context.packageName}.fileprovider",
                             file
                         )
                     }
                 }
-                return@withContext copyToCache(contentUri, item.filename)
+                return@withContext copyToCache(context, contentUri, item.filename)
             }
             
             if (item.uri.isNotEmpty()) {
@@ -351,10 +353,10 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         }
     }
     
-    private fun getFilePathFromContentUri(uri: android.net.Uri): String? {
+    private fun getFilePathFromContentUri(context: android.content.Context, uri: android.net.Uri): String? {
         try {
             val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
-            requireContext().contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     val columnIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
                     return cursor.getString(columnIndex)
@@ -366,18 +368,18 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         return null
     }
     
-    private fun copyToCache(sourceUri: android.net.Uri, filename: String): android.net.Uri? {
+    private fun copyToCache(context: android.content.Context, sourceUri: android.net.Uri, filename: String): android.net.Uri? {
         try {
-            val cacheFile = java.io.File(requireContext().cacheDir, filename)
-            requireContext().contentResolver.openInputStream(sourceUri)?.use { input ->
+            val cacheFile = java.io.File(context.cacheDir, filename)
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
                 cacheFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
             if (cacheFile.exists()) {
                 return androidx.core.content.FileProvider.getUriForFile(
-                    requireContext(),
-                    "${requireContext().packageName}.fileprovider",
+                    context,
+                    "${context.packageName}.fileprovider",
                     cacheFile
                 )
             }
@@ -392,8 +394,9 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     private fun shareStatus(item: StatusAdapter.StatusItem) {
         lifecycleScope.launch {
             try {
+                val ctx = requireContext()
                 val shareUri = withContext(Dispatchers.IO) {
-                    getShareableUri(item)
+                    getShareableUri(ctx, item)
                 }
                 
                 if (shareUri == null) {
@@ -421,7 +424,7 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
             }
             if (result) {
                 Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
-                refreshDownloadStates()
+                viewModel.loadDownloadedFilenames()
             } else {
                 Toast.makeText(requireContext(), "Failed to save", Toast.LENGTH_SHORT).show()
             }
@@ -443,8 +446,9 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         
         val position = adapter.currentList.indexOfFirst { it.id == item.id }
         
+        FullScreenViewActivity.setPendingItems(ArrayList(items))
+        
         val intent = Intent(requireContext(), FullScreenViewActivity::class.java).apply {
-            putParcelableArrayListExtra(FullScreenViewActivity.EXTRA_MEDIA_ITEMS, ArrayList(items))
             putExtra(FullScreenViewActivity.EXTRA_CURRENT_POSITION, position)
         }
         startActivity(intent)
@@ -458,6 +462,10 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     // ========== Observe Data ==========
     
     private fun observeData() {
+        viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
+            binding.swipeRefresh.isRefreshing = isLoading
+        }
+        
         when (statusSource) {
             StatusSource.LIVE -> observeLiveStatuses()
             StatusSource.SAVED -> observeSavedStatuses()
@@ -468,25 +476,20 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     private fun observeLiveStatuses() {
         viewModel.getLiveStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
             try {
-                lifecycleScope.launch {
-                    val downloadedFilenames = withContext(Dispatchers.IO) {
-                        repository.getAllDownloadedFilenames()
-                    }
-                    
-                    val items = statuses.mapNotNull { (filename, uri, type) ->
-                        StatusAdapter.StatusItem(
-                            id = filename.hashCode().toLong(),
-                            filename = filename,
-                            path = "",
-                            uri = uri.toString(),
-                            fileType = type,
-                            source = StatusSource.LIVE,
-                            isDownloaded = downloadedFilenames.contains(filename)
-                        )
-                    }
-                    adapter.submitList(items)
-                    updateEmptyState(items.isEmpty())
+                val downloadedFilenames = viewModel.downloadedFilenames.value ?: emptySet()
+                currentItems = statuses.mapNotNull { (filename, uri, type) ->
+                    StatusAdapter.StatusItem(
+                        id = java.util.UUID.nameUUIDFromBytes(filename.toByteArray()).mostSignificantBits,
+                        filename = filename,
+                        path = "",
+                        uri = uri.toString(),
+                        fileType = type,
+                        source = StatusSource.LIVE,
+                        isDownloaded = downloadedFilenames.contains(filename)
+                    )
                 }
+                adapter.submitList(currentItems)
+                updateEmptyState(currentItems.isEmpty())
             } catch (e: Exception) {
                 updateEmptyState(true)
             }
@@ -496,8 +499,8 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
     private fun observeSavedStatuses() {
         viewModel.getSavedStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
             try {
-                val items = statuses.mapNotNull { status ->
-                    if (status.localPath.isNullOrEmpty() && status.originalUri.isNullOrEmpty()) {
+                currentItems = statuses.mapNotNull { status ->
+                    if (status.localPath.isEmpty() && status.originalUri.isEmpty()) {
                         return@mapNotNull null
                     }
                     
@@ -513,8 +516,8 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                         expiresAt = 0L
                     )
                 }
-                adapter.submitList(items)
-                updateEmptyState(items.isEmpty())
+                adapter.submitList(currentItems)
+                updateEmptyState(currentItems.isEmpty())
             } catch (e: Exception) {
                 updateEmptyState(true)
             }
@@ -528,34 +531,29 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
                 val retentionMs = retentionDays * 24L * 60L * 60L * 1000L
                 
                 val uniqueStatuses = statuses.distinctBy { it.filename }
+                val downloadedFilenames = viewModel.downloadedFilenames.value ?: emptySet()
                 
-                lifecycleScope.launch {
-                    val downloadedFilenames = withContext(Dispatchers.IO) {
-                        repository.getAllDownloadedFilenames()
+                currentItems = uniqueStatuses.mapNotNull { status ->
+                    if (status.localPath.isEmpty()) {
+                        return@mapNotNull null
                     }
                     
-                    val items = uniqueStatuses.mapNotNull { status ->
-                        if (status.localPath.isNullOrEmpty()) {
-                            return@mapNotNull null
-                        }
-                        
-                        val expiresAt = status.savedAt + retentionMs
-                        
-                        StatusAdapter.StatusItem(
-                            id = status.id,
-                            filename = status.filename,
-                            path = status.localPath,
-                            uri = status.originalUri ?: "",
-                            fileType = status.fileType,
-                            source = StatusSource.CACHED,
-                            isDownloaded = downloadedFilenames.contains(status.filename),
-                            cachedAt = status.savedAt,
-                            expiresAt = expiresAt
-                        )
-                    }
-                    adapter.submitList(items)
-                    updateEmptyState(items.isEmpty())
+                    val expiresAt = status.savedAt + retentionMs
+                    
+                    StatusAdapter.StatusItem(
+                        id = status.id,
+                        filename = status.filename,
+                        path = status.localPath,
+                        uri = status.originalUri ?: "",
+                        fileType = status.fileType,
+                        source = StatusSource.CACHED,
+                        isDownloaded = downloadedFilenames.contains(status.filename),
+                        cachedAt = status.savedAt,
+                        expiresAt = expiresAt
+                    )
                 }
+                adapter.submitList(currentItems)
+                updateEmptyState(currentItems.isEmpty())
             } catch (e: Exception) {
                 updateEmptyState(true)
             }

@@ -152,21 +152,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBottomNavigation() {
         binding.bottomNavigation.setOnItemSelectedListener { item ->
-            val fragment = when (item.itemId) {
-                R.id.nav_live -> StatusSectionFragment.newInstance(StatusSource.LIVE)
-                R.id.nav_saved -> StatusSectionFragment.newInstance(StatusSource.SAVED)
-                R.id.nav_cached -> StatusSectionFragment.newInstance(StatusSource.CACHED)
-                else -> return@setOnItemSelectedListener false
+            // P2-12: Clear selection when navigating away from a tab
+            if (isInSelectionMode) {
+                selectionCallback?.onCancelSelectionClicked()
+                exitSelectionMode()
             }
-            loadFragment(fragment)
+            
+            val tag = item.itemId.toString()
+            var fragment = supportFragmentManager.findFragmentByTag(tag)
+            val transaction = supportFragmentManager.beginTransaction()
+            
+            supportFragmentManager.fragments.forEach { transaction.hide(it) }
+            
+            if (fragment == null) {
+                fragment = when (item.itemId) {
+                    R.id.nav_live -> StatusSectionFragment.newInstance(StatusSource.LIVE)
+                    R.id.nav_saved -> StatusSectionFragment.newInstance(StatusSource.SAVED)
+                    R.id.nav_cached -> StatusSectionFragment.newInstance(StatusSource.CACHED)
+                    else -> return@setOnItemSelectedListener false
+                }
+                transaction.add(R.id.fragmentContainer, fragment, tag)
+            } else {
+                transaction.show(fragment)
+            }
+            
+            transaction.commit()
             true
         }
-    }
-
-    private fun loadFragment(fragment: Fragment) {
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.fragmentContainer, fragment)
-            .commit()
     }
 
     private fun setupClickListeners() {
@@ -356,7 +368,8 @@ class MainActivity : AppCompatActivity() {
         val seekBar = dialogView.findViewById<SeekBar>(R.id.seekBarDays)
         val txtDays = dialogView.findViewById<android.widget.TextView>(R.id.txtDays)
         
-        seekBar.max = Constants.MAX_RETENTION_DAYS - Constants.MIN_RETENTION_DAYS
+        val maxDays = Constants.MAX_RETENTION_DAYS - Constants.MIN_RETENTION_DAYS
+        seekBar.max = if (maxDays > 0) maxDays else 1
         seekBar.progress = currentDays - Constants.MIN_RETENTION_DAYS
         txtDays.text = "$currentDays days"
         

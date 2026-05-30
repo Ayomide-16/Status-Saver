@@ -31,7 +31,6 @@ class StatusAdapter(
     private val onShareClick: ((StatusItem) -> Unit)? = null
 ) : ListAdapter<StatusAdapter.StatusItem, StatusAdapter.StatusViewHolder>(StatusDiffCallback()) {
 
-    private var downloadedFilenames: Set<String> = emptySet()
     private val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
     
     // SelectionTracker integration
@@ -48,7 +47,7 @@ class StatusAdapter(
         val uri: String,
         val fileType: FileType,
         val source: StatusSource,
-        var isDownloaded: Boolean = false,
+        val isDownloaded: Boolean = false,
         val cachedAt: Long = 0L,
         val expiresAt: Long = 0L
     )
@@ -70,15 +69,7 @@ class StatusAdapter(
         return tracker.selection.mapNotNull { id -> getItemForId(id) }
     }
     
-    fun updateDownloadedState(filenames: Set<String>) {
-        downloadedFilenames = filenames
-        currentList.forEachIndexed { index, item ->
-            val newState = filenames.contains(item.filename) || item.source == StatusSource.SAVED
-            if (item.isDownloaded != newState) {
-                notifyItemChanged(index)
-            }
-        }
-    }
+
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StatusViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -88,12 +79,9 @@ class StatusAdapter(
 
     override fun onBindViewHolder(holder: StatusViewHolder, position: Int) {
         val item = getItem(position)
-        val updatedItem = item.copy(
-            isDownloaded = downloadedFilenames.contains(item.filename) || item.source == StatusSource.SAVED
-        )
         val isSelected = selectionTracker?.isSelected(item.id) ?: false
         val isInSelectionMode = selectionTracker?.hasSelection() ?: false
-        holder.bind(updatedItem, isInSelectionMode, isSelected)
+        holder.bind(item, isInSelectionMode, isSelected)
     }
 
     inner class StatusViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {

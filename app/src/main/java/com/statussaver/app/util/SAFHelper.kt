@@ -118,8 +118,18 @@ object SAFHelper {
      * Clear stored URI and permissions
      */
     fun clearStoredUri(context: Context) {
+        val storedUri = getStoredUri(context)
+        if (storedUri != null) {
+            try {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.releasePersistableUriPermission(storedUri, flags)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to release persistable permission: ${e.message}")
+            }
+        }
+        
         val prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().remove(Constants.KEY_SAF_URI).apply()
-        Log.d(TAG, "Cleared stored URI")
+        Log.d(TAG, "Cleared stored URI and released permissions")
     }
 }

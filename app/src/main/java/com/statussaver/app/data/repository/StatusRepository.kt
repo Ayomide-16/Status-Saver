@@ -365,7 +365,7 @@ class StatusRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error getting file path from uri: ${e.message}")
         }
-        return uri.toString()
+        return null
     }
     
     // ========== Live Status (from WhatsApp folder) ==========
@@ -416,6 +416,13 @@ class StatusRepository(private val context: Context) {
         return statusDao.getStatusesBySource(StatusSource.CACHED)
     }
     
+    /**
+     * Get all cached statuses synchronously (for background threads)
+     */
+    suspend fun getCachedStatusesSync(): List<StatusEntity> {
+        return statusDao.getStatusesBySourceSync(StatusSource.CACHED)
+    }
+    
     fun getCachedStatusesByType(fileType: FileType): LiveData<List<StatusEntity>> {
         return statusDao.getStatusesBySourceAndType(StatusSource.CACHED, fileType)
     }
@@ -431,10 +438,15 @@ class StatusRepository(private val context: Context) {
         try {
             val filename = documentFile.name ?: return@withContext null
             
-            // Check if already cached
-            if (statusDao.existsByFilenameAndSource(filename, StatusSource.CACHED)) {
-                Log.d(TAG, "Already cached: $filename")
-                return@withContext null
+            val existing = statusDao.getStatusByFilenameAndSource(filename, StatusSource.CACHED)
+            if (existing != null) {
+                if (existing.createdAt >= documentFile.lastModified()) {
+                    Log.d(TAG, "Already cached and up to date: $filename")
+                    return@withContext null
+                } else {
+                    Log.d(TAG, "Newer version found, replacing: $filename")
+                    statusDao.deleteStatus(existing)
+                }
             }
             
             val cacheDir = getCacheDirectory()
@@ -495,7 +507,7 @@ class StatusRepository(private val context: Context) {
             val status = statusDao.getStatusByIdSync(id) ?: return@withContext false
             
             // Try to delete the actual file
-            if (!status.localPath.isNullOrEmpty()) {
+            if (status.localPath.isNotEmpty()) {
                 if (status.localPath.startsWith("content://")) {
                     // MediaStore URI - delete via ContentResolver
                     val uri = Uri.parse(status.localPath)
@@ -526,7 +538,7 @@ class StatusRepository(private val context: Context) {
             val status = statusDao.getStatusByIdSync(id) ?: return@withContext false
             
             // Delete the cached file
-            if (!status.localPath.isNullOrEmpty()) {
+            if (status.localPath.isNotEmpty()) {
                 val file = File(status.localPath)
                 if (file.exists()) {
                     file.delete()
@@ -714,8 +726,18 @@ class StatusRepository(private val context: Context) {
         try {
             val file = File(status.localPath)
             if (file.exists()) {
+                val absolutePath = file.absolutePath
                 file.delete()
-                scanMediaFile(file)
+                
+                // P2-11: Delete from MediaStore to remove ghost entries
+                try {
+                    val uri = MediaStore.Files.getContentUri("external")
+                    val where = "${MediaStore.MediaColumns.DATA}=?"
+                    val args = arrayOf(absolutePath)
+                    context.contentResolver.delete(uri, where, args)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error removing MediaStore entry: ${e.message}")
+                }
             }
             statusDao.deleteStatus(status)
             

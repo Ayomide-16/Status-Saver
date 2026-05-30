@@ -9,7 +9,7 @@ class StatusSaverApp : Application(), Configuration.Provider {
     
     companion object {
         const val TAG = "StatusSaver"
-        lateinit var instance: StatusSaverApp
+        var instance: StatusSaverApp? = null
             private set
     }
 

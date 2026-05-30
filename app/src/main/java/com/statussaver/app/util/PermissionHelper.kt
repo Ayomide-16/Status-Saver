@@ -107,9 +107,12 @@ object PermissionHelper {
                 Environment.isExternalStorageManager()
             }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
-                // Android 10 uses scoped storage but requestLegacyExternalStorage="true" 
-                // should allow writing
-                true
+                // Android 10 uses scoped storage but requestLegacyExternalStorage="true"
+                // requires WRITE_EXTERNAL_STORAGE to actually write
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
             }
             else -> {
                 // Android 9 and below

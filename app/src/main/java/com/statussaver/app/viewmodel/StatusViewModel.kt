@@ -55,11 +55,12 @@ class StatusViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
     
-    // ========== Live Statuses ==========
+    private var initialLoadDone = false
     
     fun getLiveStatuses(fileType: FileType): LiveData<List<StatusRepository.StatusFile>> {
         // Trigger refresh on first access
-        if (_liveImages.value?.isEmpty() == true || _liveVideos.value?.isEmpty() == true) {
+        if (!initialLoadDone) {
+            initialLoadDone = true
             refreshLiveStatuses()
         }
         return when (fileType) {

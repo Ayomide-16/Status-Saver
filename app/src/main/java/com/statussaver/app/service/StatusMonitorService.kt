@@ -8,10 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.FileObserver
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.documentfile.provider.DocumentFile
@@ -49,17 +46,7 @@ class StatusMonitorService : Service() {
     
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var repository: StatusRepository
-    private val handler = Handler(Looper.getMainLooper())
-    private var isRunning = false
-    
-    private val checkRunnable = object : Runnable {
-        override fun run() {
-            if (isRunning) {
-                checkForNewStatuses()
-                handler.postDelayed(this, CHECK_INTERVAL_MS)
-            }
-        }
-    }
+    private var monitorJob: Job? = null
     
     override fun onCreate() {
         super.onCreate()
@@ -91,55 +78,54 @@ class StatusMonitorService : Service() {
     }
     
     private fun startMonitoring() {
-        if (isRunning) return
+        if (monitorJob?.isActive == true) return
         
         val notification = createNotification()
         startForeground(Constants.NOTIFICATION_ID, notification)
         
-        isRunning = true
-        handler.post(checkRunnable)
-        
-        // Initial check
-        checkForNewStatuses()
+        monitorJob = serviceScope.launch {
+            while (isActive) {
+                checkForNewStatuses()
+                delay(CHECK_INTERVAL_MS)
+            }
+        }
         
         Log.d(TAG, "Monitoring started")
     }
     
     private fun stopMonitoring() {
-        isRunning = false
-        handler.removeCallbacks(checkRunnable)
+        monitorJob?.cancel()
+        monitorJob = null
         Log.d(TAG, "Monitoring stopped")
     }
     
-    private fun checkForNewStatuses() {
+    private suspend fun checkForNewStatuses() {
         if (!SAFHelper.hasValidPermission(this)) {
             Log.w(TAG, "No valid SAF permission")
             return
         }
         
-        serviceScope.launch {
-            try {
-                val prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
-                val autoSaveEnabled = prefs.getBoolean(Constants.KEY_AUTO_SAVE_ENABLED, false)
+        try {
+            val prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
+            val autoSaveEnabled = prefs.getBoolean(Constants.KEY_AUTO_SAVE_ENABLED, false)
+            
+            val (cached, skipped) = repository.performFullBackup()
+            if (cached > 0) {
+                Log.d(TAG, "Cached $cached new statuses")
+                updateNotification(cached)
                 
-                val (cached, skipped) = repository.performFullBackup()
-                if (cached > 0) {
-                    Log.d(TAG, "Cached $cached new statuses")
-                    updateNotification(cached)
-                    
-                    // If Auto-Save is enabled, also save all newly cached files
-                    if (autoSaveEnabled) {
-                        Log.d(TAG, "Auto-Save enabled, saving cached files...")
-                        // Save newly cached files to Saved folder
-                        val cachedStatuses = repository.getCachedStatuses().value ?: emptyList()
-                        cachedStatuses.take(cached).forEach { status ->
-                            repository.saveCachedStatus(status)
-                        }
+                // If Auto-Save is enabled, also save all newly cached files
+                if (autoSaveEnabled) {
+                    Log.d(TAG, "Auto-Save enabled, saving cached files...")
+                    // Save newly cached files to Saved folder
+                    val cachedStatuses = repository.getCachedStatusesSync()
+                    cachedStatuses.take(cached).forEach { status ->
+                        repository.saveCachedStatus(status)
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking for new statuses: ${e.message}")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking for new statuses: ${e.message}")
         }
     }
     

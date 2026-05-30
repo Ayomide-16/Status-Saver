@@ -45,7 +45,7 @@ interface StatusDao {
     suspend fun getCountBySource(source: StatusSource): Int
     
     // Remove duplicates - keep only the latest entry for each filename
-    @Query("DELETE FROM statuses WHERE id NOT IN (SELECT MIN(id) FROM statuses GROUP BY filename, source)")
+    @Query("DELETE FROM statuses WHERE id NOT IN (SELECT MAX(id) FROM statuses GROUP BY filename, source)")
     suspend fun removeDuplicates(): Int
     
     // ========== Downloaded Status Operations ==========
