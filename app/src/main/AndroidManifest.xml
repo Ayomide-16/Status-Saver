@@ -46,6 +46,12 @@
             android:exported="false"
             android:theme="@style/Theme.StatusSaver.FullScreen" />
 
+        <!-- Settings Screen -->
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.StatusSaver" />
+
         <!-- Status Monitor Service -->
         <service
             android:name=".service.StatusMonitorService"

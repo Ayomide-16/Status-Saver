@@ -290,12 +290,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
-        
-        // Set Auto-Save checkbox state
-        val prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
-        val autoSaveEnabled = prefs.getBoolean(Constants.KEY_AUTO_SAVE_ENABLED, false)
-        menu.findItem(R.id.action_autosave)?.isChecked = autoSaveEnabled
-        
         return true
     }
 
@@ -306,135 +300,20 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Refreshing...", Toast.LENGTH_SHORT).show()
                 true
             }
-            R.id.action_autosave -> {
-                toggleAutoSave(item)
-                true
-            }
-            R.id.action_cache_duration -> {
-                showCacheDurationDialog()
-                true
-            }
-            R.id.action_theme_toggle -> {
-                toggleTheme()
-                true
-            }
-            R.id.action_folder_paths -> {
-                showFolderPathsDialog()
-                true
-            }
-            R.id.action_how_to_use -> {
-                showHowToUseDialog()
-                true
-            }
-            R.id.action_privacy_policy -> {
-                showPrivacyPolicyDialog()
+            R.id.action_settings -> {
+                startActivity(Intent(this, com.statussaver.app.ui.SettingsActivity::class.java))
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
-    private fun toggleAutoSave(item: MenuItem) {
-        val prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
-        val currentState = prefs.getBoolean(Constants.KEY_AUTO_SAVE_ENABLED, false)
-        val newState = !currentState
-        
-        prefs.edit().putBoolean(Constants.KEY_AUTO_SAVE_ENABLED, newState).apply()
-        item.isChecked = newState
-        
-        val message = if (newState) {
-            "Auto-Save enabled: All new statuses will be saved automatically"
-        } else {
-            "Auto-Save disabled"
-        }
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    }
 
-    private fun showCacheDurationDialog() {
-        val currentDays = Constants.getRetentionDays(this)
-        
-        val dialogView = layoutInflater.inflate(R.layout.dialog_cache_duration, null)
-        val seekBar = dialogView.findViewById<SeekBar>(R.id.seekBarDays)
-        val txtDays = dialogView.findViewById<android.widget.TextView>(R.id.txtDays)
-        
-        val maxDays = Constants.MAX_RETENTION_DAYS - Constants.MIN_RETENTION_DAYS
-        seekBar.max = if (maxDays > 0) maxDays else 1
-        seekBar.progress = currentDays - Constants.MIN_RETENTION_DAYS
-        txtDays.text = "$currentDays days"
-        
-        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val days = progress + Constants.MIN_RETENTION_DAYS
-                txtDays.text = "$days days"
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-        
-        AlertDialog.Builder(this)
-            .setTitle("Cache Duration")
-            .setMessage("Set how long cached statuses should be kept before automatic deletion.")
-            .setView(dialogView)
-            .setPositiveButton("Save") { _, _ ->
-                val newDays = seekBar.progress + Constants.MIN_RETENTION_DAYS
-                Constants.setRetentionDays(this, newDays)
-                Toast.makeText(this, "Cache duration set to $newDays days", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun showFolderPathsDialog() {
-        val whatsAppPath = repository.getWhatsAppStatusUri()
-        val cachePath = repository.getCacheDirectory().absolutePath
-        val savedPath = repository.getSavedDirectory().absolutePath
-        
-        val message = """
-            <b>WhatsApp Status Folder:</b><br/>
-            <small>$whatsAppPath</small><br/><br/>
-            
-            <b>Cached Status Folder:</b><br/>
-            <small>$cachePath</small><br/><br/>
-            
-            <b>Saved Status Folder:</b><br/>
-            <small>$savedPath</small>
-        """.trimIndent()
-        
-        AlertDialog.Builder(this)
-            .setTitle("Folder Paths")
-            .setMessage(Html.fromHtml(message, Html.FROM_HTML_MODE_LEGACY))
-            .setPositiveButton("OK", null)
-            .setNeutralButton("Copy Paths") { _, _ ->
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val allPaths = """
-                    WhatsApp: $whatsAppPath
-                    Cache: $cachePath
-                    Saved: $savedPath
-                """.trimIndent()
-                clipboard.setPrimaryClip(ClipData.newPlainText("Folder Paths", allPaths))
-                Toast.makeText(this, "Paths copied to clipboard", Toast.LENGTH_SHORT).show()
-            }
-            .show()
-    }
-
-    private fun showHowToUseDialog() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.how_to_use_title)
-            .setMessage(Html.fromHtml(getString(R.string.how_to_use_content), Html.FROM_HTML_MODE_LEGACY))
-            .setPositiveButton("Got it!", null)
-            .show()
-    }
-
-    private fun showPrivacyPolicyDialog() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.privacy_policy_title)
-            .setMessage(Html.fromHtml(getString(R.string.privacy_policy_content), Html.FROM_HTML_MODE_LEGACY))
-            .setPositiveButton("OK", null)
-            .show()
-    }
-
-    private fun toggleTheme() {
-        ThemeManager.toggleTheme(this)
-        recreate()
+    // Recreate activity if theme changed in SettingsActivity
+    override fun onResume() {
+        super.onResume()
+        // If we want to check for theme changes, we can compare current theme with the one we started with.
+        // For simplicity, we just rely on recreate() from SettingsActivity, but if we navigate back,
+        // we might need to check. Since we recreate MainActivity when theme changes, let's keep it simple.
     }
 }

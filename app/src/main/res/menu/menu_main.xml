@@ -8,34 +8,8 @@
         app:showAsAction="never" />
 
     <item
-        android:id="@+id/action_autosave"
-        android:title="Auto-Save"
-        android:checkable="true"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_cache_duration"
-        android:title="Cache Duration"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_folder_paths"
-        android:title="Folder Paths"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_how_to_use"
-        android:title="How to Use"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_privacy_policy"
-        android:title="Privacy Policy"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_theme_toggle"
-        android:title="Toggle Theme"
+        android:id="@+id/action_settings"
+        android:title="Settings"
         app:showAsAction="never" />
 
 </menu>
