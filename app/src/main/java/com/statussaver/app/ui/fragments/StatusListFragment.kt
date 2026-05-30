@@ -477,15 +477,15 @@ class StatusListFragment : Fragment(), com.statussaver.app.ui.SelectionCallback 
         viewModel.getLiveStatuses(fileType).observe(viewLifecycleOwner) { statuses ->
             try {
                 val downloadedFilenames = viewModel.downloadedFilenames.value ?: emptySet()
-                currentItems = statuses.mapNotNull { (filename, uri, type) ->
+                currentItems = statuses.mapNotNull { file ->
                     StatusAdapter.StatusItem(
-                        id = java.util.UUID.nameUUIDFromBytes(filename.toByteArray()).mostSignificantBits,
-                        filename = filename,
-                        path = "",
-                        uri = uri.toString(),
-                        fileType = type,
+                        id = java.util.UUID.nameUUIDFromBytes(file.filename.toByteArray()).mostSignificantBits,
+                        filename = file.filename,
+                        path = file.path,
+                        uri = file.uri,
+                        fileType = file.fileType,
                         source = StatusSource.LIVE,
-                        isDownloaded = downloadedFilenames.contains(filename)
+                        isDownloaded = downloadedFilenames.contains(file.filename)
                     )
                 }
                 adapter.submitList(currentItems)

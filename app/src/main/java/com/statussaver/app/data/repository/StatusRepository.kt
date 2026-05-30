@@ -353,7 +353,7 @@ class StatusRepository(private val context: Context) {
         }
     }
     
-    private fun getFilePathFromMediaStoreUri(uri: Uri): String {
+    private fun getFilePathFromMediaStoreUri(uri: Uri): String? {
         try {
             val projection = arrayOf(MediaStore.MediaColumns.DATA)
             context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->

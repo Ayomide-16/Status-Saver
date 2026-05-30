@@ -102,7 +102,7 @@ class StatusAdapter(
 
         fun getItemDetails(): ItemDetailsLookup.ItemDetails<Long> =
             object : ItemDetailsLookup.ItemDetails<Long>() {
-                override fun getPosition(): Int = bindingAdapterPosition
+                override fun getPosition(): Int = absoluteAdapterPosition
                 override fun getSelectionKey(): Long? = currentItem?.id
             }
 
